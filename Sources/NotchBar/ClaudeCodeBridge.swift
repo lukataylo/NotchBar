@@ -195,9 +195,17 @@ class ClaudeCodeBridge: AgentProviderController {
 
         var sessions: [(name: String, path: String, pid: Int32)] = []
         for pid in pids {
-            guard let cwd = Shell.cwd(for: pid) else { continue }
-            sessions.append((name: (cwd as NSString).lastPathComponent, path: cwd, pid: pid))
+            guard let cwd = Shell.cwd(for: pid),
+                  cwd.hasPrefix("/Users/"),
+                  !cwd.contains("/Library/"),
+                  cwd.components(separatedBy: "/").count >= 4 else { continue }
+            let name = (cwd as NSString).lastPathComponent
+            guard !name.isEmpty else { continue }
+            sessions.append((name: name, path: cwd, pid: pid))
         }
+        // Deduplicate by path (multiple claude processes can share a project)
+        var seen = Set<String>()
+        sessions = sessions.filter { seen.insert($0.path).inserted }
 
         guard !sessions.isEmpty else { return }
         DispatchQueue.main.async { [weak self] in
@@ -353,12 +361,15 @@ class ClaudeCodeBridge: AgentProviderController {
         }
         log.info("Event: \(event.hookType ?? event.hookEventName ?? "unknown") tool=\(event.toolName ?? "nil") session=\(String(sessionId.prefix(8)))")
 
-        let projectName = event.cwd.map { ($0 as NSString).lastPathComponent } ?? String(sessionId.prefix(8))
+        let cwd = event.cwd ?? ""
         let session: ClaudeSession
         if let uuid = sessionMap[sessionId], let existing = state.sessions.first(where: { $0.id == uuid }) {
             session = existing
         } else {
-            let s = AgentSession(name: projectName, projectPath: event.cwd ?? "~", providerID: .claude)
+            // Only create sessions for real project directories
+            guard cwd.hasPrefix("/Users/"), !cwd.contains("/Library/"), cwd.components(separatedBy: "/").count >= 4 else { return }
+            let projectName = (cwd as NSString).lastPathComponent
+            let s = AgentSession(name: projectName, projectPath: cwd, providerID: .claude)
             s.isActive = true; s.statusMessage = "Connected"
             state.sessions.append(s)
             sessionMap[sessionId] = s.id

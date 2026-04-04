@@ -168,10 +168,9 @@ struct SessionCardExpanded: View {
             // Stats bar
             statsBar
 
-            // Slash commands + message input (only when terminal is available)
-            if session.terminalAvailable {
-                slashCommandBar
-                messageInput
+            // Keyboard shortcut hints (only when there's a pending approval)
+            if session.pendingApproval != nil {
+                approvalHints
             }
         }
         .background(Color.white.opacity(0.03))
@@ -458,6 +457,22 @@ struct SessionCardExpanded: View {
         ]
         let target = paths.first { FileManager.default.fileExists(atPath: $0) } ?? paths[0]
         try? content.write(toFile: target, atomically: true, encoding: .utf8)
+    }
+
+    // MARK: - Approval Hints
+
+    var approvalHints: some View {
+        HStack(spacing: 16) {
+            HStack(spacing: 4) {
+                Text("⌘⇧Y").font(.system(size: 10, weight: .semibold, design: .monospaced)).foregroundColor(brandSuccess)
+                Text("Approve").font(.system(size: 10)).foregroundColor(.white.opacity(0.5))
+            }
+            HStack(spacing: 4) {
+                Text("⌘⇧N").font(.system(size: 10, weight: .semibold, design: .monospaced)).foregroundColor(.red)
+                Text("Reject").font(.system(size: 10)).foregroundColor(.white.opacity(0.5))
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
     }
 
     // MARK: - Message Input

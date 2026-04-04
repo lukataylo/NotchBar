@@ -30,7 +30,7 @@ enum Shell {
     /// Get the current working directory for a PID via lsof.
     static func cwd(for pid: Int32) -> String? {
         guard let output = run("/usr/sbin/lsof", ["-p", String(pid), "-Fn", "-d", "cwd"]) else { return nil }
-        guard let line = output.components(separatedBy: "\n").last(where: { $0.hasPrefix("n/") }) else { return nil }
+        guard let line = output.components(separatedBy: "\n").first(where: { $0.hasPrefix("n/") }) else { return nil }
         return String(line.dropFirst())
     }
 
