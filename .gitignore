@@ -1,0 +1,11 @@
+.build/
+.swiftpm/
+*.xcodeproj
+xcuserdata/
+DerivedData/
+.DS_Store
+NotchClaude.app/
+NotchBar.app/
+.claude/
+*.bak
+*.dmg
