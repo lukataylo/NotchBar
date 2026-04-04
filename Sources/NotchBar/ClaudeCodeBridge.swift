@@ -704,9 +704,6 @@ class ClaudeCodeBridge: AgentProviderController {
 
     @discardableResult
     func writeHookScript() -> Bool {
-        let timeoutSeconds = AppSettings.shared.approvalTimeoutMinutes * 60
-        let defaultTimeout = timeoutSeconds > 0 ? timeoutSeconds : 300
-
         let script = """
 #!/bin/bash
 # NotchBar hook — socket-based IPC for fast approvals

@@ -105,7 +105,6 @@ struct SessionCardExpanded: View {
     @ObservedObject var state: NotchState
     var onCollapse: () -> Void
 
-    @State private var messageText: String = ""
     @State private var showClaudeMd: Bool = false
     @State private var editingClaudeMd: Bool = false
     @State private var claudeMdDraft: String = ""
@@ -359,36 +358,6 @@ struct SessionCardExpanded: View {
         }
     }
 
-    // MARK: - Slash Commands
-
-    var slashCommandBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                slashButton("/compact", icon: "arrow.down.right.and.arrow.up.left")
-                slashButton("/commit", icon: "checkmark.message")
-                slashButton("/review", icon: "eye")
-                slashButton("/clear", icon: "trash")
-            }
-            .padding(.horizontal, 12).padding(.vertical, 4)
-        }
-    }
-
-    func slashButton(_ command: String, icon: String) -> some View {
-        Button {
-            ProviderManager.shared?.sendQuickCommand(command, session: session)
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 9))
-                Text(command).font(.system(size: 10, weight: .medium, design: .monospaced))
-            }
-            .foregroundColor(.white.opacity(0.5))
-            .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(Color.white.opacity(0.06))
-            .cornerRadius(6)
-        }
-        .buttonStyle(.plain)
-    }
-
     // MARK: - CLAUDE.md Viewer
 
     func claudeMdViewer(content: String) -> some View {
@@ -473,52 +442,6 @@ struct SessionCardExpanded: View {
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 6)
-    }
-
-    // MARK: - Message Input
-
-    var messageInput: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "terminal")
-                    .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.3))
-                ZStack(alignment: .leading) {
-                    if messageText.isEmpty {
-                        Text(session.isWaitingForUser ? "Reply to \(session.providerShortName)..." : "Message \(session.providerShortName)...")
-                            .font(.system(size: 13))
-                            .foregroundColor(.white.opacity(0.35))
-                    }
-                    TextField("", text: $messageText)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 13))
-                        .foregroundColor(.white)
-                        .onSubmit { send() }
-                }
-            }
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(Color.white.opacity(0.12))
-            .cornerRadius(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(session.isWaitingForUser ? SessionState.waitingForUser.stateColor.opacity(0.4) : Color.white.opacity(0.1), lineWidth: session.isWaitingForUser ? 1.0 : 0.5)
-            )
-
-            Button(action: send) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 22))
-                    .foregroundColor(messageText.trimmingCharacters(in: .whitespaces).isEmpty ? .white.opacity(0.15) : brandOrange)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 8)
-    }
-
-    func send() {
-        let text = messageText.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return }
-        messageText = ""
-        ProviderManager.shared?.sendInput(text, session: session)
     }
 
     // MARK: - Helpers

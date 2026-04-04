@@ -196,10 +196,8 @@ Sources/NotchBar/
 | Token & cost tracking | yes | yes |
 | Git branch & diff view | yes | yes |
 | Session history & resume | yes | yes |
-| Send input to terminal | yes | yes |
 | Integration install/remove | yes | yes |
 | CLAUDE.md / AGENTS.md editor | yes | yes |
-| Slash commands (/compact, /commit, etc.) | yes | yes |
 | Desktop notifications | yes | yes |
 | Multi-session support | yes | yes |
 
