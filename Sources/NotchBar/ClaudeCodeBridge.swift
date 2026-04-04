@@ -213,7 +213,13 @@ class ClaudeCodeBridge: AgentProviderController {
     func detectTerminal(for session: ClaudeSession) {
         guard let pid = session.pid else { return }
         DispatchQueue.global(qos: .utility).async {
-            let available = Shell.isRunningInTerminal(pid: pid)
+            var available = Shell.isRunningInTerminal(pid: pid)
+            // Fallback: if parent-chain walk didn't find Terminal/iTerm,
+            // check if either app is running at all (covers permission edge cases)
+            if !available {
+                let apps = NSWorkspace.shared.runningApplications
+                available = apps.contains { $0.bundleIdentifier == "com.apple.Terminal" || $0.bundleIdentifier == "com.googlecode.iterm2" }
+            }
             DispatchQueue.main.async {
                 session.terminalAvailable = available
             }
