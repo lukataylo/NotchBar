@@ -55,6 +55,12 @@ The goal isn't to replace the terminal. It's to make the terminal *legible*.
 
 ## Install
 
+### Recommended
+
+Download the packaged [`NotchBar-0.1.0.dmg`](https://github.com/lukataylo/NotchBar/releases/download/v0.1.0/NotchBar-0.1.0.dmg), open it, and drag `NotchBar.app` into `Applications`.
+
+Because current builds are unsigned, macOS may warn on first launch. If it does, right-click the app and choose `Open`, or use `System Settings → Privacy & Security → Open Anyway`.
+
 ### Option A: Double-click
 
 ```
@@ -70,8 +76,28 @@ cd NotchBar
 ./install.sh
 ```
 
+If a prebuilt app exists in `dist/`, the installer uses it first. Otherwise it builds the app locally with Swift.
+
 > **Requirements:** macOS 13+ and Xcode Command Line Tools (`xcode-select --install`).
 > First launch may trigger Gatekeeper — open System Settings → Privacy & Security → Open Anyway.
+
+### Build a DMG
+
+```bash
+cd ~/Documents/NotchBar
+./scripts/create_dmg.sh
+```
+
+This produces:
+
+```text
+dist/NotchBar.app
+dist/NotchBar-0.1.0.dmg
+```
+
+### Detailed install notes
+
+See [INSTALL.md](INSTALL.md).
 
 ## Keyboard Shortcuts
 
@@ -194,6 +220,13 @@ Terminal.app and iTerm2 are supported for input injection. Session monitoring wo
 ## Contributing
 
 Issues and PRs welcome at [github.com/lukataylo/NotchBar](https://github.com/lukataylo/NotchBar).
+
+## Stability Notes
+
+- The app now includes runtime exception logging in `~/Library/Logs/NotchBar/runtime.log`
+- Claude hook generation correctly targets the renamed `NotchBar` process
+- Update checks now point at the correct `NotchBar` GitHub repository
+- The app bundle now declares Apple Events usage for Terminal/iTerm automation flows
 
 ## License
 

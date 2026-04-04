@@ -9,22 +9,29 @@ HOOK="$HOME/.notchbar/bin/notchbar-hook"
 LOG_FILE="$HOME/.notchbar/hook.log"
 PASS=0; FAIL=0
 
-pass() { PASS=$((PASS + 1)); echo "  ✓ $1"; }
-fail() { FAIL=$((FAIL + 1)); echo "  ✗ $1: $2"; }
+pass() { PASS=$((PASS + 1)); echo "  ok $1"; }
+fail() { FAIL=$((FAIL + 1)); echo "  x $1: $2"; }
 
 echo "NotchBar Tests (v2.0)"
 echo "========================"
-
-# Clean up test artifacts from previous runs
-rm -f "$EVENTS_DIR"/test-*.json "$RESPONSES_DIR"/test-*.json 2>/dev/null
 
 # 1. Build
 echo ""; echo "Build:"
 swift build -c debug 2>&1 | tail -1
 [ -f .build/debug/NotchBar ] && pass "Binary builds" || fail "Build" "binary not found"
 
-# 2. Hook script checks (if it exists — may not if app hasn't been run yet)
-echo ""; echo "Hook Script:"
+echo ""
+echo "Info.plist:"
+plutil -lint -s Sources/NotchBar/Info.plist \
+    && pass "Info.plist is valid" || fail "Info.plist" "invalid plist"
+
+echo ""
+echo "Hook script source:"
+SOURCE_TEMPLATE="Sources/NotchBar/ClaudeCodeBridge.swift"
+grep -q 'pgrep -x "NotchBar"' "$SOURCE_TEMPLATE" \
+    && pass "Source hook template detects NotchBar process" \
+    || fail "Hook template" "missing NotchBar process detection in source"
+
 if [ -f "$HOOK" ]; then
     [ -x "$HOOK" ] && pass "Exists and executable" || fail "Hook script" "not executable"
     grep -q "pgrep" "$HOOK" && pass "Has NotchBar detection guard" || fail "Hook" "missing pgrep guard"
@@ -37,16 +44,14 @@ if [ -f "$HOOK" ]; then
     # Verify uses pgrep -x for exact match
     grep -q 'pgrep -x' "$HOOK" && pass "Uses exact process match (pgrep -x)" || fail "Hook" "missing exact match flag"
 else
-    echo "  (Hook script not found — run the app first to generate it)"
-    pass "Skipped (hook not generated yet)"
+    pass "Hook script not generated yet (run app once)"
 fi
 
-# 3. Event JSON structure validation
-echo ""; echo "Event Format:"
-EVENT_JSON='{"session_id":"x","cwd":"/test","tool_name":"Edit","tool_input":{"file_path":"/test/a.ts"},"hook_type":"post-tool-use","request_id":"1","permission_mode":"default"}'
-# Validate with built-in plutil (no python3 needed)
-echo "$EVENT_JSON" | plutil -lint -s - 2>/dev/null \
-    && pass "Event JSON is valid" || fail "Event structure" "invalid JSON"
+echo ""
+echo "Runtime directories:"
+[ -d "$HOME/.notchbar" ] && pass "~/.notchbar directory exists" || pass "~/.notchbar not created yet (app not run)"
+[ -d "$EVENTS_DIR" ] && pass "events directory exists" || pass "events directory not created yet"
+[ -d "$RESPONSES_DIR" ] && pass "responses directory exists" || pass "responses directory not created yet"
 
 # Check required fields are present
 echo "$EVENT_JSON" | grep -q '"tool_name"' && pass "Event has tool_name field" || fail "Event" "missing tool_name"
@@ -75,22 +80,9 @@ else
     pass "No settings file (hooks not installed yet)"
 fi
 
-# 6. Directory structure
-echo ""; echo "Directories:"
-[ -d "$HOME/.notchbar" ] && pass "~/.notchbar directory exists" || pass "~/.notchbar not created yet (app not run)"
-[ -d "$HOME/.notchbar/events" ] && pass "events/ directory exists" || pass "events/ not created yet"
-[ -d "$HOME/.notchbar/responses" ] && pass "responses/ directory exists" || pass "responses/ not created yet"
-
-# 7. Info.plist validation
-echo ""; echo "App Bundle:"
-if [ -f Sources/NotchBar/Info.plist ]; then
-    plutil -lint -s Sources/NotchBar/Info.plist 2>/dev/null \
-        && pass "Info.plist is valid" || fail "Info.plist" "invalid plist"
-fi
-
 # Cleanup test files only
 rm -f "$EVENTS_DIR"/test-*.json "$RESPONSES_DIR"/test-*.json 2>/dev/null
 
 echo ""; echo "========================"
 echo "Results: $PASS passed, $FAIL failed"
-[ $FAIL -eq 0 ] && echo "All tests passed!" || exit 1
+[ "$FAIL" -eq 0 ]

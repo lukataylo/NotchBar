@@ -8,7 +8,7 @@ struct CollapsedView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            NeutralBrandIcon()
+            ActiveProviderIcon(session: state.activeSession)
                 .frame(width: hasNotch ? 18 : 16, height: hasNotch ? 18 : 16)
                 .fixedSize()
                 .padding(.leading, hasNotch ? 20 : 14)
@@ -94,7 +94,7 @@ struct ExpandedViewV2: View {
     var headerSection: some View {
         HStack(spacing: 8) {
             Button(action: onCollapse) {
-                NeutralBrandIcon().frame(width: 20, height: 20)
+                NotchBarIcon().frame(width: 20, height: 20)
             }.buttonStyle(.plain)
 
             Text(state.activeSession?.providerDisplayName ?? "NotchBar").font(.system(size: 13, weight: .semibold)).foregroundColor(.white)

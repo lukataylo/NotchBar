@@ -150,12 +150,14 @@ private class HotkeyHandlerMap {
 
 // MARK: - Menu Bar Icon
 
-class StatusItemManager {
+class StatusItemManager: NSObject {
     var statusItem: NSStatusItem!
     let state: NotchState
 
     init(state: NotchState) {
         self.state = state
+        super.init()
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
             let img = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
@@ -283,6 +285,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let state = NotchState()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Prevent macOS from auto-terminating this background app
+        ProcessInfo.processInfo.disableAutomaticTermination("NotchBar must stay alive to handle hook events")
+        ProcessInfo.processInfo.disableSuddenTermination()
+
         log.info("NotchBar launching...")
         log.info("Screens: \(NSScreen.screens.count), notched: \(NSScreen.screens.filter { $0.hasNotch }.count)")
 

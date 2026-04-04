@@ -354,13 +354,10 @@ class ClaudeCodeBridge: AgentProviderController {
             let desc = event.toolDescription
             let toolName = event.toolName ?? "Tool"
             let settings = AppSettings.shared
-
-            // Check if this tool needs approval
             let needsApproval = !settings.shouldAutoApprove(toolName: toolName)
 
             if needsApproval {
                 log.info("Tool '\(toolName)' requires approval (request: \(toolUseId))")
-                // Create pending approval
                 let approval = PendingApproval(
                     requestId: toolUseId,
                     toolName: toolName,
@@ -373,7 +370,6 @@ class ClaudeCodeBridge: AgentProviderController {
                 session.appendTask(TaskItem(title: desc, status: .pendingApproval, toolName: toolName, filePath: event.filePath))
                 session.statusMessage = "Awaiting approval: \(desc)"
 
-                // Auto-expand the panel
                 if state.expandedScreenID == nil {
                     let loc = NSEvent.mouseLocation
                     state.expandedScreenID = (NSScreen.screens.first { $0.frame.contains(loc) } ?? NSScreen.main)?.displayID
@@ -384,7 +380,6 @@ class ClaudeCodeBridge: AgentProviderController {
                 }
                 settings.playSound("Submarine")
 
-                // Set timeout timer
                 let timeoutMinutes = settings.approvalTimeoutMinutes
                 if timeoutMinutes > 0 {
                     let timer = Timer.scheduledTimer(withTimeInterval: TimeInterval(timeoutMinutes * 60), repeats: false) { [weak self] _ in
@@ -393,11 +388,8 @@ class ClaudeCodeBridge: AgentProviderController {
                     approvalTimers[toolUseId] = timer
                 }
             } else {
-                log.info("Tool '\(toolName)' auto-approved by settings (request: \(toolUseId))")
                 session.appendTask(TaskItem(title: desc, status: .running, toolName: toolName, filePath: event.filePath))
                 session.statusMessage = desc
-                // Write immediate approve response so hook script unblocks
-                writeApprovalResponse(requestId: toolUseId, decision: "approve")
             }
 
             session.isWaitingForUser = false
@@ -527,7 +519,6 @@ class ClaudeCodeBridge: AgentProviderController {
                     session.updateCost()
                     changed = true
 
-                    // Cost alert
                     let threshold = AppSettings.shared.costAlertThreshold
                     if session.estimatedCost >= threshold && (session.estimatedCost - ModelPricing.estimate(provider: session.providerID, model: session.modelName, inputTokens: input, outputTokens: 0)) < threshold {
                         sendNotification(title: "Cost Alert", body: "\(session.name) has exceeded \(String(format: "$%.2f", threshold))")
@@ -651,77 +642,67 @@ class ClaudeCodeBridge: AgentProviderController {
         let timeoutSeconds = AppSettings.shared.approvalTimeoutMinutes * 60
         let defaultTimeout = timeoutSeconds > 0 ? timeoutSeconds : 300
 
+        // Build auto-approve list from current settings
+        let settings = AppSettings.shared
+        var autoTools: [String] = []
+        if settings.autoApproveReads { autoTools.append(contentsOf: ["Read", "Grep", "Glob"]) }
+        if settings.autoApproveEdits { autoTools.append(contentsOf: ["Edit", "Write", "NotebookEdit"]) }
+        if settings.autoApproveBash { autoTools.append("Bash") }
+        if settings.autoApproveAgents { autoTools.append("Agent") }
+        let autoApproveList = autoTools.joined(separator: "|")
+
         // Pure shell — no python3 dependency
         let script = """
 #!/bin/bash
-# NotchBar hook — smart approval mode
-# Auto-approves reads, blocks for writes if NotchBar is running.
-# Falls back to auto-approve if NotchBar is not running or on timeout.
+# NotchBar hook — auto-approved tools are instant, others block for approval
 EVENTS_DIR="$HOME/.notchbar/events"
 RESPONSES_DIR="$HOME/.notchbar/responses"
-LOG_FILE="$HOME/.notchbar/hook.log"
-mkdir -p "$EVENTS_DIR" "$RESPONSES_DIR"
 HOOK_TYPE="${1:-notification}"
 REQUEST_ID="$(date +%s)-$$-$RANDOM"
 INPUT=$(cat -)
 
-# Extract tool_name using pure shell (no python3 dependency)
-TOOL_NAME=$(echo "$INPUT" | grep -o '"tool_name" *: *"[^"]*"' | head -1 | sed 's/.*: *"\\([^"]*\\)".*/\\1/')
-
-log_msg() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [hook] $1" >> "$LOG_FILE" 2>/dev/null
-}
-
-log_msg "Invoked: hook_type=$HOOK_TYPE request_id=$REQUEST_ID tool=$TOOL_NAME"
-
-# If NotchBar is not running, auto-approve everything
+# If NotchBar is not running, auto-approve immediately
 if ! pgrep -x "NotchBar" >/dev/null 2>&1; then
-    log_msg "NotchBar not running, auto-approving"
     [ "$HOOK_TYPE" = "pre-tool-use" ] && echo '{"decision":"approve"}'
     exit 0
 fi
 
-# Build event JSON: prepend hook_type and request_id to input object (pure shell)
-STRIPPED=$(echo "$INPUT" | sed 's/^[[:space:]]*{//')
-EVENT='{"hook_type":"'"$HOOK_TYPE"'","request_id":"'"$REQUEST_ID"'",'"$STRIPPED"
-if ! echo "$EVENT" | grep -q '^{.*}$' 2>/dev/null; then
-    EVENT='{"hook_type":"'"$HOOK_TYPE"'","request_id":"'"$REQUEST_ID"'"}'
-fi
-echo "$EVENT" > "$EVENTS_DIR/$REQUEST_ID.json"
-log_msg "Event written to $EVENTS_DIR/$REQUEST_ID.json"
+# Extract tool name
+TOOL_NAME=$(echo "$INPUT" | grep -o '"tool_name" *: *"[^"]*"' | head -1 | sed 's/.*: *"\\([^"]*\\)".*/\\1/')
 
-# For post-tool-use, no response needed
-if [ "$HOOK_TYPE" != "pre-tool-use" ]; then
-    log_msg "Post-tool-use, exiting"
+# Send event to NotchBar in background (never blocks Claude)
+{
+    mkdir -p "$EVENTS_DIR"
+    echo "$INPUT" | awk -v ht="$HOOK_TYPE" -v rid="$REQUEST_ID" '
+      NR==1 { sub(/^[[:space:]]*\\{/, "{\\\"hook_type\\\":\\\"" ht "\\\",\\\"request_id\\\":\\\"" rid "\\\",") }
+      { print }
+    ' > "$EVENTS_DIR/$REQUEST_ID.json"
+} &
+
+# Post-tool-use: fire and forget
+[ "$HOOK_TYPE" != "pre-tool-use" ] && exit 0
+
+# Auto-approved tools: approve instantly in the hook (no round-trip to NotchBar)
+AUTO_PATTERN="\(autoApproveList)"
+if [ -n "$AUTO_PATTERN" ] && echo "$TOOL_NAME" | grep -qE "^($AUTO_PATTERN)$"; then
+    echo '{"decision":"approve"}'
     exit 0
 fi
 
-# Wait for NotchBar's response (it decides whether to block based on settings)
-# TIMEOUT is in seconds, we sleep 0.2s per iteration so max_iterations = TIMEOUT * 5
+# Tools needing approval: wait for NotchBar's response file
+mkdir -p "$RESPONSES_DIR"
 RESPONSE_FILE="$RESPONSES_DIR/$REQUEST_ID.json"
 TIMEOUT_SECS=\(defaultTimeout)
-MAX_ITERS=$((TIMEOUT_SECS * 5))
-ITER=0
-log_msg "Waiting for response (timeout=${TIMEOUT_SECS}s, max_iters=$MAX_ITERS)"
-while [ $ITER -lt $MAX_ITERS ]; do
-    if [ -f "$RESPONSE_FILE" ]; then
-        RESPONSE=$(cat "$RESPONSE_FILE")
-        rm -f "$RESPONSE_FILE"
-        log_msg "Got response: $RESPONSE"
-        echo "$RESPONSE"
-        exit 0
-    fi
+DEADLINE=$(($(date +%s) + TIMEOUT_SECS))
+while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+    [ -f "$RESPONSE_FILE" ] && cat "$RESPONSE_FILE" && rm -f "$RESPONSE_FILE" && exit 0
     sleep 0.2
-    ITER=$((ITER + 1))
-    # Check every 25 iterations (~5s) if NotchBar died
-    if [ $((ITER % 25)) -eq 0 ] && ! pgrep -x "NotchBar" >/dev/null 2>&1; then
-        log_msg "NotchBar died during wait, auto-approving"
+    # Every ~5s check if NotchBar died
+    if ! pgrep -x "NotchBar" >/dev/null 2>&1; then
         echo '{"decision":"approve"}'
         exit 0
     fi
 done
-# Timeout: auto-approve
-log_msg "Timeout after ${TIMEOUT_SECS}s, auto-approving"
 echo '{"decision":"approve"}'
 """
         let url = binDir.appendingPathComponent("notchbar-hook")
@@ -750,14 +731,15 @@ echo '{"decision":"approve"}'
 
         var hooks = settings["hooks"] as? [String: Any] ?? [:]
 
-        // Merge: preserve existing hooks, remove old NotchBar entries, add new ones
+        // Merge: preserve existing hooks, remove old NotchBar/NotchClaude entries, add new ones
         for (key, hookType) in [("PreToolUse", "pre-tool-use"), ("PostToolUse", "post-tool-use")] {
             var entries = hooks[key] as? [[String: Any]] ?? []
-            // Remove any existing notchbar entries
+            // Remove any existing notchbar or legacy notchclaude entries
             entries.removeAll { entry in
                 guard let hookList = entry["hooks"] as? [[String: Any]] else { return false }
                 return hookList.contains { h in
-                    (h["command"] as? String)?.contains("notchbar-hook") == true
+                    let cmd = h["command"] as? String ?? ""
+                    return cmd.contains("notchbar-hook") || cmd.contains("notchclaude-hook")
                 }
             }
             entries.append(notchEntry(hookType))

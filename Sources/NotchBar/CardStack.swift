@@ -168,11 +168,11 @@ struct SessionCardExpanded: View {
             // Stats bar
             statsBar
 
-            // Slash commands
-            slashCommandBar
-
-            // Message input
-            messageInput
+            // Slash commands + message input (only when terminal is available)
+            if session.terminalAvailable {
+                slashCommandBar
+                messageInput
+            }
         }
         .background(Color.white.opacity(0.03))
         .overlay(
@@ -524,7 +524,7 @@ struct EmptySessionView: View {
     var body: some View {
         VStack(spacing: 12) {
             Spacer()
-            NeutralBrandIcon()
+            NotchBarIcon()
                 .opacity(0.3)
                 .frame(width: 32, height: 32)
             Text("No active sessions")

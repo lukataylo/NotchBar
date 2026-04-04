@@ -2,7 +2,7 @@
 set -uo pipefail
 
 cd "$(dirname "$0")" || exit 1
-./install.sh
+./scripts/create_dmg.sh
 
 echo ""
 echo "Press Enter to close."

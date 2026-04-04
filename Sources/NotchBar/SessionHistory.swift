@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import os.log
 
 private let log = Logger(subsystem: "com.notchbar", category: "history")

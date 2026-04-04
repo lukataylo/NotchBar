@@ -52,7 +52,7 @@ struct OnboardingView: View {
 
     var welcomeStep: some View {
         VStack(spacing: 20) {
-            NeutralBrandIcon()
+            NotchBarIcon()
                 .frame(width: 56, height: 56)
 
             Text("NotchBar")

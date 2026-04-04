@@ -11,13 +11,15 @@
     <key>CFBundleDisplayName</key>
     <string>NotchBar</string>
     <key>CFBundleVersion</key>
-    <string>2.0.0</string>
+    <string>0.1.0</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.0.0</string>
+    <string>0.1.0</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>NotchBar needs Automation access to Terminal and iTerm so it can resume sessions and send approved input back to local coding agents.</string>
     <key>LSUIElement</key>
     <true/>
     <key>LSMinimumSystemVersion</key>
