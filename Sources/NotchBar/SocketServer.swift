@@ -18,13 +18,38 @@ class SocketServer {
         socketPath = base.appendingPathComponent("notchbar.sock").path
     }
 
+    /// Callback to cancel a pending response (called on socket timeout).
+    /// Set by the bridge so it can clean up orphaned approval timers.
+    var onTimeout: ((ClaudeCodeEvent) -> Void)?
+
     /// Start listening. `handler` is called for each event with (event, hookType, respond).
     /// Call `respond(jsonString)` to send the response back to the hook script.
     /// Handler is called on a background thread — dispatch to main for UI work.
     func start(handler: @escaping (ClaudeCodeEvent, String, @escaping (String) -> Void) -> Void) {
         onEvent = handler
 
-        // Clean up stale socket
+        // Clean up stale socket from previous crash
+        // Try connecting first — if it succeeds, another instance is running
+        let testFD = socket(AF_UNIX, SOCK_STREAM, 0)
+        if testFD >= 0 {
+            var testAddr = sockaddr_un()
+            testAddr.sun_family = sa_family_t(AF_UNIX)
+            withUnsafeMutablePointer(to: &testAddr.sun_path) { ptr in
+                let bytes = socketPath.utf8CString
+                ptr.withMemoryRebound(to: CChar.self, capacity: bytes.count) { dest in
+                    for i in 0..<bytes.count { dest[i] = bytes[i] }
+                }
+            }
+            let connected = withUnsafePointer(to: &testAddr, { ptr in
+                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    connect(testFD, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+                }
+            }) == 0
+            close(testFD)
+            if connected {
+                log.warning("Another NotchBar instance is already listening on the socket")
+            }
+        }
         unlink(socketPath)
 
         // Create socket
@@ -139,17 +164,29 @@ class SocketServer {
         // For pre-tool-use: call handler and wait for response
         let semaphore = DispatchSemaphore(value: 0)
         var responseJSON = "{\"decision\":\"approve\"}"
+        var responded = false
+        let lock = NSLock()
 
         onEvent?(event, hookType) { response in
+            lock.lock()
+            guard !responded else { lock.unlock(); return }
+            responded = true
+            lock.unlock()
             responseJSON = response
             semaphore.signal()
         }
 
-        // Wait for response (max 5 minutes)
-        let timeout = DispatchTime.now() + .seconds(300)
+        // Wait for response — timeout matches approval setting (default 5 min)
+        let timeoutMinutes = max(AppSettings.shared.approvalTimeoutMinutes, 1)
+        let timeout = DispatchTime.now() + .seconds(timeoutMinutes * 60)
         if semaphore.wait(timeout: timeout) == .timedOut {
-            log.warning("Approval timed out, auto-approving")
+            lock.lock()
+            responded = true
+            lock.unlock()
+            log.warning("Approval timed out after \(timeoutMinutes)min, auto-approving")
             responseJSON = "{\"decision\":\"approve\"}"
+            // Clean up orphaned callbacks so approval timer doesn't write to dead socket
+            onTimeout?(event)
         }
 
         // Send response

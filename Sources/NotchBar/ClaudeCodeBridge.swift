@@ -132,6 +132,21 @@ class ClaudeCodeBridge: AgentProviderController {
 
         // Start socket server for fast IPC with hook scripts
         socketServer = SocketServer()
+        socketServer?.onTimeout = { [weak self] event in
+            let requestId = event.toolUseId ?? event.requestId ?? ""
+            DispatchQueue.main.async {
+                // Clean up orphaned callback and timer so they don't write to dead sockets
+                self?.pendingResponses.removeValue(forKey: requestId)
+                self?.approvalTimers[requestId]?.invalidate()
+                self?.approvalTimers.removeValue(forKey: requestId)
+                // Clear pending approval UI
+                if let session = self?.state.sessions.first(where: { $0.pendingApproval?.requestId == requestId }) {
+                    session.pendingApproval = nil
+                    session.statusMessage = "Timed out (auto-approved)"
+                    self?.state.objectWillChange.send()
+                }
+            }
+        }
         socketServer?.start { [weak self] event, hookType, respond in
             self?.handleSocketEvent(event, hookType: hookType, respond: respond)
         }
