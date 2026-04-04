@@ -7,8 +7,6 @@ import Combine
 let brandOrange = Color(red: 0.851, green: 0.467, blue: 0.341)
 let brandSuccess = Color.green
 let codexBlue = Color(red: 0.35, green: 0.62, blue: 0.96)
-let claudeOrange = brandOrange
-let claudeGreen = brandSuccess
 let diffRedBg = Color(red: 0.35, green: 0.08, blue: 0.08)
 let diffGreenBg = Color(red: 0.06, green: 0.25, blue: 0.06)
 let diffRedText = Color(red: 1.0, green: 0.55, blue: 0.55)

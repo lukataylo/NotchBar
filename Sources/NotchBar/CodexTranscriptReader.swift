@@ -26,15 +26,9 @@ final class CodexTranscriptReader: LiveTranscriptReader {
     }
 
     func readNew() -> [TranscriptEntry] {
-        guard let handle = FileHandle(forReadingAtPath: path) else { return [] }
-        defer { handle.closeFile() }
-
-        handle.seek(toFileOffset: lastOffset)
-        let data = handle.readDataToEndOfFile()
-        guard !data.isEmpty else { return [] }
-
-        lastOffset = handle.offsetInFile
-        guard let text = String(data: data, encoding: .utf8) else { return [] }
+        guard let result = Shell.readTail(path: path, from: lastOffset) else { return [] }
+        lastOffset = result.newOffset
+        let text = result.text
 
         var lines = (partialLine + text).components(separatedBy: "\n")
         if !(partialLine + text).hasSuffix("\n"), !lines.isEmpty {

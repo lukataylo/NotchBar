@@ -1,7 +1,7 @@
 import Foundation
 import os.log
 
-private let log = Logger(subsystem: "com.notchclaude", category: "transcript")
+private let log = Logger(subsystem: "com.notchbar", category: "transcript")
 
 /// Reads and tails Claude Code transcript .jsonl files to extract
 /// Claude's reasoning, token usage, and session state.
@@ -24,24 +24,10 @@ class TranscriptReader: LiveTranscriptReader {
         }
     }
 
-    /// Read new lines since last check. Returns parsed entries.
     func readNew() -> [TranscriptEntry] {
-        guard let handle = FileHandle(forReadingAtPath: path) else {
-            log.debug("Cannot open transcript file: \(self.path)")
-            return []
-        }
-        defer { handle.closeFile() }
-
-        handle.seek(toFileOffset: lastOffset)
-        let data = handle.readDataToEndOfFile()
-        guard !data.isEmpty else { return [] }
-
-        lastOffset = handle.offsetInFile
-
-        guard let text = String(data: data, encoding: .utf8) else {
-            log.warning("Failed to decode transcript data as UTF-8")
-            return []
-        }
+        guard let result = Shell.readTail(path: path, from: lastOffset) else { return [] }
+        lastOffset = result.newOffset
+        let text = result.text
 
         var entries: [TranscriptEntry] = []
         let fullText = partialLine + text

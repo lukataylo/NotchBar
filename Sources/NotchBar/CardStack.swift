@@ -68,7 +68,7 @@ struct SessionCardCollapsed: View {
                 if !session.costSummary.isEmpty {
                     Text(session.costSummary)
                         .font(.system(size: 9, design: .monospaced))
-                        .foregroundColor(claudeOrange.opacity(0.6))
+                        .foregroundColor(brandOrange.opacity(0.6))
                 }
 
                 Text(session.duration)
@@ -259,7 +259,7 @@ struct SessionCardExpanded: View {
                         Text("CLAUDE.md")
                     }
                     .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(showClaudeMd ? claudeOrange : .white.opacity(0.3))
+                    .foregroundColor(showClaudeMd ? brandOrange : .white.opacity(0.3))
                 }
                 .buttonStyle(.plain)
             }
@@ -294,7 +294,7 @@ struct SessionCardExpanded: View {
         HStack(alignment: .top, spacing: 6) {
             Image(systemName: "brain")
                 .font(.system(size: 9))
-                .foregroundColor(claudeOrange.opacity(0.6))
+                .foregroundColor(brandOrange.opacity(0.6))
                 .padding(.top, 2)
             Text(reasoning)
                 .font(.system(size: 11))
@@ -348,7 +348,7 @@ struct SessionCardExpanded: View {
                     Label(session.tokenSummary, systemImage: "number")
                     if !session.costSummary.isEmpty {
                         Label(session.costSummary, systemImage: "dollarsign.circle")
-                            .foregroundColor(claudeOrange.opacity(0.5))
+                            .foregroundColor(brandOrange.opacity(0.5))
                     }
                     Label(session.duration, systemImage: "clock")
                     Spacer()
@@ -406,7 +406,7 @@ struct SessionCardExpanded: View {
                         editingClaudeMd = true
                     }
                     .font(.system(size: 10))
-                    .foregroundColor(claudeOrange)
+                    .foregroundColor(brandOrange)
                     .buttonStyle(.plain)
                 }
                 Text(content)
@@ -429,7 +429,7 @@ struct SessionCardExpanded: View {
                 HStack {
                     Text("Editing \(session.instructionsFileName)")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(claudeOrange)
+                        .foregroundColor(brandOrange)
                     Spacer()
                     Button("Cancel") { editingClaudeMd = false }
                         .font(.system(size: 10)).foregroundColor(.secondary).buttonStyle(.plain)
@@ -438,7 +438,7 @@ struct SessionCardExpanded: View {
                         session.claudeMdContent = claudeMdDraft
                         editingClaudeMd = false
                     }
-                    .font(.system(size: 10, weight: .semibold)).foregroundColor(claudeOrange).buttonStyle(.plain)
+                    .font(.system(size: 10, weight: .semibold)).foregroundColor(brandOrange).buttonStyle(.plain)
                 }
                 TextEditor(text: $claudeMdDraft)
                     .font(.system(size: 10, design: .monospaced))
@@ -456,13 +456,8 @@ struct SessionCardExpanded: View {
             projectPath + "/\(session.instructionsFileName)",
             projectPath + "/.\(session.providerID.rawValue)/\(session.instructionsFileName)"
         ]
-        for path in paths {
-            if FileManager.default.fileExists(atPath: path) {
-                try? content.write(toFile: path, atomically: true, encoding: .utf8)
-                return
-            }
-        }
-        try? content.write(toFile: paths[0], atomically: true, encoding: .utf8)
+        let target = paths.first { FileManager.default.fileExists(atPath: $0) } ?? paths[0]
+        try? content.write(toFile: target, atomically: true, encoding: .utf8)
     }
 
     // MARK: - Message Input
@@ -497,7 +492,7 @@ struct SessionCardExpanded: View {
             Button(action: send) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 22))
-                    .foregroundColor(messageText.trimmingCharacters(in: .whitespaces).isEmpty ? .white.opacity(0.15) : claudeOrange)
+                    .foregroundColor(messageText.trimmingCharacters(in: .whitespaces).isEmpty ? .white.opacity(0.15) : brandOrange)
             }
             .buttonStyle(.plain)
         }

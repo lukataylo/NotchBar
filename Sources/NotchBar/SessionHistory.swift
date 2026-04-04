@@ -1,7 +1,7 @@
 import Foundation
 import os.log
 
-private let log = Logger(subsystem: "com.notchclaude", category: "history")
+private let log = Logger(subsystem: "com.notchbar", category: "history")
 
 struct PastSession: Identifiable {
     let id: String  // session directory name
@@ -48,30 +48,7 @@ class SessionHistoryManager {
         return sessions.sorted { $0.lastModified > $1.lastModified }
     }
 
-    /// Resume a session by opening a new terminal tab with claude --resume
     func resumeSession(_ session: PastSession) {
-        let script = """
-        tell application "Terminal"
-            activate
-            do script "cd \\"\(session.projectPath)\\" && claude --resume"
-        end tell
-        """
-        var err: NSDictionary?
-        NSAppleScript(source: script)?.executeAndReturnError(&err)
-        if err != nil {
-            // Try iTerm2
-            let itermScript = """
-            tell application "iTerm2"
-                activate
-                tell current window
-                    create tab with default profile
-                    tell current session
-                        write text "cd \\"\(session.projectPath)\\" && claude --resume"
-                    end tell
-                end tell
-            end tell
-            """
-            NSAppleScript(source: itermScript)?.executeAndReturnError(nil)
-        }
+        TerminalHelper.runCommand("cd \"\(session.projectPath)\" && claude --resume")
     }
 }

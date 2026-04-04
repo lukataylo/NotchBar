@@ -94,14 +94,14 @@ struct SessionPicker: View {
         }
     }
     func dotColor(_ s: ClaudeSession) -> Color {
-        if s.progress >= 1.0 { return claudeGreen }
+        if s.progress >= 1.0 { return brandSuccess }
         if s.isActive { return .orange }
         return .gray
     }
 }
 
 func progressColor(_ s: ClaudeSession) -> Color {
-    if s.progress >= 1.0 { return claudeGreen }
+    if s.progress >= 1.0 { return brandSuccess }
     return .orange
 }
 

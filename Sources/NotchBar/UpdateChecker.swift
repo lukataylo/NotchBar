@@ -1,13 +1,13 @@
 import Foundation
 import os.log
 
-private let log = Logger(subsystem: "com.notchclaude", category: "update")
+private let log = Logger(subsystem: "com.notchbar", category: "update")
 
 class UpdateChecker {
     static let shared = UpdateChecker()
     static let currentVersion = "2.0.0"
     private let repoOwner = "lukataylo"
-    private let repoName = "Notchcode"
+    private let repoName = "NotchBar"
 
     private var timer: Timer?
 
@@ -24,7 +24,7 @@ class UpdateChecker {
         guard let url = URL(string: urlString) else { return }
 
         var request = URLRequest(url: url, timeoutInterval: 15)
-        request.setValue("NotchClaude/\(Self.currentVersion)", forHTTPHeaderField: "User-Agent")
+        request.setValue("NotchBar/\(Self.currentVersion)", forHTTPHeaderField: "User-Agent")
 
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
@@ -48,7 +48,7 @@ class UpdateChecker {
                 log.info("Update available: \(latestVersion)")
                 DispatchQueue.main.async {
                     ClaudeCodeBridge.shared?.sendNotification(
-                        title: "NotchClaude Update Available",
+                        title: "NotchBar Update Available",
                         body: "Version \(latestVersion) is available (you have \(Self.currentVersion))"
                     )
                 }

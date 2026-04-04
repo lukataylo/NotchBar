@@ -2,8 +2,9 @@ import Foundation
 import AppKit
 import os.log
 import UserNotifications
+import ApplicationServices
 
-private let log = Logger(subsystem: "com.notchclaude", category: "bridge")
+private let log = Logger(subsystem: "com.notchbar", category: "bridge")
 
 // MARK: - Claude Code Hook Event
 
@@ -110,7 +111,7 @@ class ClaudeCodeBridge: AgentProviderController {
 
     init(state: NotchState) {
         self.state = state
-        let base = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".notchclaude")
+        let base = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".notchbar")
         eventsDir = base.appendingPathComponent("events")
         responsesDir = base.appendingPathComponent("responses")
         binDir = base.appendingPathComponent("bin")
@@ -183,46 +184,14 @@ class ClaudeCodeBridge: AgentProviderController {
     // MARK: - Session Detection
 
     private func detectRunningSessions() {
-        // Use pgrep -x for exact process name matching (avoids false positives)
-        let pipe = Pipe()
-        let pgrep = Process()
-        pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        pgrep.arguments = ["-x", "claude"]
-        pgrep.standardOutput = pipe
-        pgrep.standardError = FileHandle.nullDevice
-        guard (try? pgrep.run()) != nil else { return }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        pgrep.waitUntilExit()
-        guard let output = String(data: data, encoding: .utf8) else { return }
-
-        var pids: [Int32] = []
-        for line in output.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let pid = Int32(trimmed), pid > 0 { pids.append(pid) }
-        }
-        guard !pids.isEmpty else {
-            log.info("No running claude processes found")
-            return
-        }
-        log.info("Found \(pids.count) claude process(es): \(pids.map(String.init).joined(separator: ", "))")
+        let pids = Shell.pgrep("claude")
+        guard !pids.isEmpty else { return }
+        log.info("Found \(pids.count) claude process(es)")
 
         var sessions: [(name: String, path: String, pid: Int32)] = []
         for pid in pids {
-            let lp = Pipe()
-            let lsof = Process()
-            lsof.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-            lsof.arguments = ["-p", String(pid), "-Fn", "-d", "cwd"]
-            lsof.standardOutput = lp
-            lsof.standardError = FileHandle.nullDevice
-            guard (try? lsof.run()) != nil else { continue }
-            let ld = lp.fileHandleForReading.readDataToEndOfFile()
-            lsof.waitUntilExit()
-            if let out = String(data: ld, encoding: .utf8),
-               let line = out.components(separatedBy: "\n").last(where: { $0.hasPrefix("n/") }) {
-                let cwd = String(line.dropFirst())
-                let name = (cwd as NSString).lastPathComponent
-                sessions.append((name: name, path: cwd, pid: pid))
-            }
+            guard let cwd = Shell.cwd(for: pid) else { continue }
+            sessions.append((name: (cwd as NSString).lastPathComponent, path: cwd, pid: pid))
         }
 
         guard !sessions.isEmpty else { return }
@@ -238,51 +207,21 @@ class ClaudeCodeBridge: AgentProviderController {
                 self.readClaudeMd(for: session)
                 self.detectTerminal(for: session)
             }
-            if self.state.sessions.count > 0 { self.state.activeSessionIndex = 0 }
+            if !self.state.sessions.isEmpty { self.state.activeSessionIndex = 0 }
             self.state.objectWillChange.send()
         }
     }
 
     // MARK: - Terminal Detection
 
-    /// Check if a claude process is running under Terminal.app or iTerm2
-    /// by walking the parent process chain
     func detectTerminal(for session: ClaudeSession) {
         guard let pid = session.pid else { return }
         DispatchQueue.global(qos: .utility).async {
-            let available = Self.isRunningInTerminal(pid: pid)
+            let available = Shell.isRunningInTerminal(pid: pid)
             DispatchQueue.main.async {
                 session.terminalAvailable = available
-                log.info("Terminal available for '\(session.name)': \(available)")
             }
         }
-    }
-
-    private static func isRunningInTerminal(pid: Int32) -> Bool {
-        // Walk parent PIDs and check if any are Terminal or iTerm2
-        var currentPid = pid
-        for _ in 0..<10 {  // max depth to avoid loops
-            let pipe = Pipe()
-            let ps = Process()
-            ps.executableURL = URL(fileURLWithPath: "/bin/ps")
-            ps.arguments = ["-p", String(currentPid), "-o", "ppid=,comm="]
-            ps.standardOutput = pipe
-            ps.standardError = FileHandle.nullDevice
-            guard (try? ps.run()) != nil else { return false }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            ps.waitUntilExit()
-            guard let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !output.isEmpty else { return false }
-            let parts = output.split(separator: " ", maxSplits: 1)
-            guard parts.count >= 2 else { return false }
-            let comm = String(parts[1])
-            if comm.contains("Terminal") || comm.contains("iTerm") { return true }
-            guard let ppid = Int32(parts[0].trimmingCharacters(in: .whitespaces)), ppid > 1 else { return false }
-            currentPid = ppid
-        }
-        // Also just check if Terminal.app or iTerm2 is running at all
-        let apps = NSWorkspace.shared.runningApplications
-        return apps.contains { $0.bundleIdentifier == "com.apple.Terminal" || $0.bundleIdentifier == "com.googlecode.iterm2" }
     }
 
     // MARK: - Session Lifecycle
@@ -290,22 +229,7 @@ class ClaudeCodeBridge: AgentProviderController {
     private func checkSessionLifecycle() {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self = self else { return }
-            let pipe = Pipe()
-            let pgrep = Process()
-            pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-            pgrep.arguments = ["-x", "claude"]
-            pgrep.standardOutput = pipe
-            pgrep.standardError = FileHandle.nullDevice
-            guard (try? pgrep.run()) != nil else { return }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            pgrep.waitUntilExit()
-            guard let output = String(data: data, encoding: .utf8) else { return }
-
-            var activePids = Set<Int32>()
-            for line in output.components(separatedBy: "\n") {
-                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let pid = Int32(trimmed), pid > 0 { activePids.insert(pid) }
-            }
+            let activePids = Set(Shell.pgrep("claude"))
 
             DispatchQueue.main.async {
                 var changed = false
@@ -550,7 +474,7 @@ class ClaudeCodeBridge: AgentProviderController {
 
     func rejectAction(requestId: String, sessionId: UUID) {
         log.info("Rejecting request \(requestId)")
-        writeApprovalResponse(requestId: requestId, decision: "deny", reason: "User rejected from NotchClaude")
+        writeApprovalResponse(requestId: requestId, decision: "deny", reason: "User rejected from NotchBar")
         approvalTimers[requestId]?.invalidate()
         approvalTimers.removeValue(forKey: requestId)
 
@@ -681,17 +605,15 @@ class ClaudeCodeBridge: AgentProviderController {
     func sendToTerminal(_ message: String) {
         log.info("Sending to terminal: \(String(message.prefix(80)))")
 
-        // Check accessibility permission (needed for keystroke injection via AppleScript)
         if !AXIsProcessTrusted() {
             log.warning("Accessibility permission not granted, prompting user")
             DispatchQueue.main.async {
                 let alert = NSAlert()
                 alert.messageText = "Accessibility Permission Required"
-                alert.informativeText = "NotchClaude needs Accessibility access to send messages to your terminal.\n\nGo to System Settings → Privacy & Security → Accessibility and enable NotchClaude."
+                alert.informativeText = "NotchBar needs Accessibility access to send messages to your terminal.\n\nGo to System Settings → Privacy & Security → Accessibility and enable NotchBar."
                 alert.addButton(withTitle: "Open System Settings")
                 alert.addButton(withTitle: "Cancel")
                 if alert.runModal() == .alertFirstButtonReturn {
-                    // Prompt the system dialog which opens System Settings
                     let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true] as CFDictionary
                     AXIsProcessTrustedWithOptions(options)
                 }
@@ -699,54 +621,8 @@ class ClaudeCodeBridge: AgentProviderController {
             return
         }
 
-        let escaped = message
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let termScript = """
-            tell application "Terminal"
-                set targetTab to missing value
-                repeat with w in windows
-                    repeat with t in tabs of w
-                        if busy of t then
-                            if processes of t contains "claude" then
-                                set targetTab to t
-                                set frontmost of w to true
-                                exit repeat
-                            end if
-                        end if
-                    end repeat
-                    if targetTab is not missing value then exit repeat
-                end repeat
-                if targetTab is not missing value then
-                    tell application "System Events" to tell process "Terminal"
-                        keystroke "\(escaped)"
-                        keystroke return
-                    end tell
-                end if
-            end tell
-            """
-            var err: NSDictionary?
-            NSAppleScript(source: termScript)?.executeAndReturnError(&err)
-
-            if err != nil {
-                let itermScript = """
-                tell application "iTerm2"
-                    repeat with w in windows
-                        repeat with t in tabs of w
-                            repeat with s in sessions of t
-                                if is processing of s then
-                                    tell s to write text "\(escaped)"
-                                    return
-                                end if
-                            end repeat
-                        end repeat
-                    end repeat
-                end tell
-                """
-                NSAppleScript(source: itermScript)?.executeAndReturnError(nil)
-            }
+            TerminalHelper.sendInput(message, processName: "claude")
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 guard let session = self?.state.activeSession else { return }
@@ -757,7 +633,6 @@ class ClaudeCodeBridge: AgentProviderController {
         }
     }
 
-    /// Send a slash command to the terminal
     func sendSlashCommand(_ command: String) {
         sendToTerminal(command)
         AppSettings.shared.playSound("Pop")
@@ -798,12 +673,12 @@ class ClaudeCodeBridge: AgentProviderController {
         // Pure shell — no python3 dependency
         let script = """
 #!/bin/bash
-# NotchClaude hook — smart approval mode
-# Auto-approves reads, blocks for writes if NotchClaude is running.
-# Falls back to auto-approve if NotchClaude is not running or on timeout.
-EVENTS_DIR="$HOME/.notchclaude/events"
-RESPONSES_DIR="$HOME/.notchclaude/responses"
-LOG_FILE="$HOME/.notchclaude/hook.log"
+# NotchBar hook — smart approval mode
+# Auto-approves reads, blocks for writes if NotchBar is running.
+# Falls back to auto-approve if NotchBar is not running or on timeout.
+EVENTS_DIR="$HOME/.notchbar/events"
+RESPONSES_DIR="$HOME/.notchbar/responses"
+LOG_FILE="$HOME/.notchbar/hook.log"
 mkdir -p "$EVENTS_DIR" "$RESPONSES_DIR"
 HOOK_TYPE="${1:-notification}"
 REQUEST_ID="$(date +%s)-$$-$RANDOM"
@@ -818,9 +693,9 @@ log_msg() {
 
 log_msg "Invoked: hook_type=$HOOK_TYPE request_id=$REQUEST_ID tool=$TOOL_NAME"
 
-# If NotchClaude is not running, auto-approve everything
-if ! pgrep -x "NotchClaude" >/dev/null 2>&1; then
-    log_msg "NotchClaude not running, auto-approving"
+# If NotchBar is not running, auto-approve everything
+if ! pgrep -x "NotchBar" >/dev/null 2>&1; then
+    log_msg "NotchBar not running, auto-approving"
     [ "$HOOK_TYPE" = "pre-tool-use" ] && echo '{"decision":"approve"}'
     exit 0
 fi
@@ -840,7 +715,7 @@ if [ "$HOOK_TYPE" != "pre-tool-use" ]; then
     exit 0
 fi
 
-# Wait for NotchClaude's response (it decides whether to block based on settings)
+# Wait for NotchBar's response (it decides whether to block based on settings)
 # TIMEOUT is in seconds, we sleep 0.2s per iteration so max_iterations = TIMEOUT * 5
 RESPONSE_FILE="$RESPONSES_DIR/$REQUEST_ID.json"
 TIMEOUT_SECS=\(defaultTimeout)
@@ -857,9 +732,9 @@ while [ $ITER -lt $MAX_ITERS ]; do
     fi
     sleep 0.2
     ITER=$((ITER + 1))
-    # Check every 25 iterations (~5s) if NotchClaude died
-    if [ $((ITER % 25)) -eq 0 ] && ! pgrep -x "NotchClaude" >/dev/null 2>&1; then
-        log_msg "NotchClaude died during wait, auto-approving"
+    # Check every 25 iterations (~5s) if NotchBar died
+    if [ $((ITER % 25)) -eq 0 ] && ! pgrep -x "NotchBar" >/dev/null 2>&1; then
+        log_msg "NotchBar died during wait, auto-approving"
         echo '{"decision":"approve"}'
         exit 0
     fi
@@ -868,7 +743,7 @@ done
 log_msg "Timeout after ${TIMEOUT_SECS}s, auto-approving"
 echo '{"decision":"approve"}'
 """
-        let url = binDir.appendingPathComponent("notchclaude-hook")
+        let url = binDir.appendingPathComponent("notchbar-hook")
         do {
             try script.write(to: url, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
@@ -883,7 +758,7 @@ echo '{"decision":"approve"}'
 
     @discardableResult
     func installHooks() -> Bool {
-        let hookPath = binDir.appendingPathComponent("notchclaude-hook").path
+        let hookPath = binDir.appendingPathComponent("notchbar-hook").path
         let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/settings.json")
         var settings: [String: Any] = (try? Data(contentsOf: url))
             .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
@@ -894,14 +769,14 @@ echo '{"decision":"approve"}'
 
         var hooks = settings["hooks"] as? [String: Any] ?? [:]
 
-        // Merge: preserve existing hooks, remove old NotchClaude entries, add new ones
+        // Merge: preserve existing hooks, remove old NotchBar entries, add new ones
         for (key, hookType) in [("PreToolUse", "pre-tool-use"), ("PostToolUse", "post-tool-use")] {
             var entries = hooks[key] as? [[String: Any]] ?? []
-            // Remove any existing notchclaude entries
+            // Remove any existing notchbar entries
             entries.removeAll { entry in
                 guard let hookList = entry["hooks"] as? [[String: Any]] else { return false }
                 return hookList.contains { h in
-                    (h["command"] as? String)?.contains("notchclaude-hook") == true
+                    (h["command"] as? String)?.contains("notchbar-hook") == true
                 }
             }
             entries.append(notchEntry(hookType))
@@ -931,13 +806,13 @@ echo '{"decision":"approve"}'
 
         guard var hooks = settings["hooks"] as? [String: Any] else { return true }
 
-        // Only remove NotchClaude entries, preserve all other hooks
+        // Only remove NotchBar entries, preserve all other hooks
         for key in ["PreToolUse", "PostToolUse"] {
             guard var entries = hooks[key] as? [[String: Any]] else { continue }
             entries.removeAll { entry in
                 guard let hookList = entry["hooks"] as? [[String: Any]] else { return false }
                 return hookList.contains { h in
-                    (h["command"] as? String)?.contains("notchclaude-hook") == true
+                    (h["command"] as? String)?.contains("notchbar-hook") == true
                 }
             }
             if entries.isEmpty {
@@ -956,7 +831,7 @@ echo '{"decision":"approve"}'
         do {
             let data = try JSONSerialization.data(withJSONObject: settings, options: .prettyPrinted)
             try data.write(to: url)
-            log.info("NotchClaude hooks removed (other hooks preserved)")
+            log.info("NotchBar hooks removed (other hooks preserved)")
             return true
         } catch {
             log.error("Failed to remove hooks: \(error.localizedDescription)")

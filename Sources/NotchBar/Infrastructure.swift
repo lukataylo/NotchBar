@@ -5,7 +5,7 @@ import Carbon.HIToolbox
 import ApplicationServices
 import os.log
 
-private let log = Logger(subsystem: "com.notchclaude", category: "infra")
+private let log = Logger(subsystem: "com.notchbar", category: "infra")
 
 // MARK: - Key-Accepting Panel
 

@@ -1,0 +1,64 @@
+import Foundation
+
+/// Lightweight wrapper for running shell commands synchronously.
+enum Shell {
+    /// Run an executable with arguments and return stdout as a String.
+    /// Returns nil if the process fails to launch or produces no output.
+    static func run(_ executable: String, _ args: [String], cwd: String? = nil) -> String? {
+        let pipe = Pipe()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = args
+        if let cwd { process.currentDirectoryURL = URL(fileURLWithPath: cwd) }
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// Run pgrep -x for an exact process name match. Returns matching PIDs.
+    static func pgrep(_ processName: String) -> [Int32] {
+        guard let output = run("/usr/bin/pgrep", ["-x", processName]) else { return [] }
+        return output
+            .components(separatedBy: "\n")
+            .compactMap { Int32($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            .filter { $0 > 0 }
+    }
+
+    /// Get the current working directory for a PID via lsof.
+    static func cwd(for pid: Int32) -> String? {
+        guard let output = run("/usr/sbin/lsof", ["-p", String(pid), "-Fn", "-d", "cwd"]) else { return nil }
+        guard let line = output.components(separatedBy: "\n").last(where: { $0.hasPrefix("n/") }) else { return nil }
+        return String(line.dropFirst())
+    }
+
+    /// Walk the parent process chain to check if a PID is running under Terminal.app or iTerm2.
+    static func isRunningInTerminal(pid: Int32) -> Bool {
+        var currentPid = pid
+        for _ in 0..<10 {
+            guard let output = run("/bin/ps", ["-p", String(currentPid), "-o", "ppid=,comm="])?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !output.isEmpty else { return false }
+            let parts = output.split(separator: " ", maxSplits: 1)
+            guard parts.count >= 2 else { return false }
+            let comm = String(parts[1])
+            if comm.contains("Terminal") || comm.contains("iTerm") { return true }
+            guard let ppid = Int32(parts[0].trimmingCharacters(in: .whitespaces)), ppid > 1 else { return false }
+            currentPid = ppid
+        }
+        return false
+    }
+
+    /// Read incremental data from a file starting at `offset`.
+    /// Returns the decoded text and the new file offset, or nil on failure.
+    static func readTail(path: String, from offset: UInt64) -> (text: String, newOffset: UInt64)? {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { handle.closeFile() }
+        handle.seek(toFileOffset: offset)
+        let data = handle.readDataToEndOfFile()
+        guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return nil }
+        return (text, handle.offsetInFile)
+    }
+}

@@ -21,16 +21,16 @@ struct CollapsedView: View {
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(.white)
                         .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(claudeOrange)
+                        .background(brandOrange)
                         .cornerRadius(4)
                 } else if session.isWaitingForUser {
                     Text("Waiting for you")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(claudeOrange).lineLimit(1)
+                        .foregroundColor(brandOrange).lineLimit(1)
                 } else if session.isCompleted {
                     Text("Completed \(session.costSummary)")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(claudeGreen).lineLimit(1)
+                        .foregroundColor(brandSuccess).lineLimit(1)
                 } else {
                     Text(session.statusMessage)
                         .font(.system(size: 10, weight: .medium))
@@ -172,7 +172,7 @@ struct NotchView: View {
 
     @ViewBuilder var borderOverlay: some View {
         if hasNotch && !showExpanded { Color.clear }
-        else { notchShape.stroke(isHovering ? claudeOrange.opacity(0.2) : Color.white.opacity(0.04), lineWidth: 0.5) }
+        else { notchShape.stroke(isHovering ? brandOrange.opacity(0.2) : Color.white.opacity(0.04), lineWidth: 0.5) }
     }
 
     func expand() { state.expandedScreenID = screenID }

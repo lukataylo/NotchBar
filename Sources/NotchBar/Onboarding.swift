@@ -1,7 +1,7 @@
 import SwiftUI
 import os.log
 
-private let log = Logger(subsystem: "com.notchclaude", category: "onboarding")
+private let log = Logger(subsystem: "com.notchbar", category: "onboarding")
 
 struct OnboardingView: View {
     @ObservedObject var settings = AppSettings.shared

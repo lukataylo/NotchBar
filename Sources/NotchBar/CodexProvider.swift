@@ -1,7 +1,5 @@
 import Foundation
-import AppKit
 import os.log
-import ApplicationServices
 
 private let codexLog = Logger(subsystem: "com.notchbar", category: "codex")
 
@@ -38,7 +36,7 @@ final class CodexProvider: AgentProviderController {
     }
 
     func sendInput(_ message: String, for session: AgentSession?) {
-        sendToTerminal(message, processName: descriptor.executableName)
+        TerminalHelper.sendInput(message, processName: descriptor.executableName)
         guard let session else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             if session.tasks.count >= 10 { session.tasks.removeFirst() }
@@ -73,8 +71,8 @@ final class CodexProvider: AgentProviderController {
 
     func resumeSession(_ session: PastSession) {
         let profileFlag = hasInstalledManagedProfile() ? "-p notchbar " : ""
-        let command = "cd \\\"\(session.projectPath)\\\" && codex \(profileFlag)resume \(session.id)"
-        runInTerminal(command)
+        let command = "cd \"\(session.projectPath)\" && codex \(profileFlag)resume \(session.id)"
+        TerminalHelper.runCommand(command)
     }
 
     func installIntegration() -> Bool {
@@ -125,28 +123,12 @@ model_reasoning_effort = "medium"
     }
 
     private func detectRunningSessions() {
-        let pipe = Pipe()
-        let pgrep = Process()
-        pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        pgrep.arguments = ["-x", descriptor.executableName]
-        pgrep.standardOutput = pipe
-        pgrep.standardError = FileHandle.nullDevice
-
-        guard (try? pgrep.run()) != nil else { return }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        pgrep.waitUntilExit()
-        guard let output = String(data: data, encoding: .utf8) else { return }
-
-        let pids = output
-            .components(separatedBy: "\n")
-            .compactMap { Int32($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
-            .filter { $0 > 0 }
-
+        let pids = Shell.pgrep(descriptor.executableName)
         guard !pids.isEmpty else { return }
 
         let latestByPath = latestSessionFilesByProjectPath()
         for pid in pids {
-            guard let cwd = currentWorkingDirectory(for: pid) else { continue }
+            guard let cwd = Shell.cwd(for: pid) else { continue }
             let projectName = (cwd as NSString).lastPathComponent
             let session = existingSession(for: cwd) ?? AgentSession(name: projectName, projectPath: cwd, providerID: .codex)
 
@@ -161,7 +143,7 @@ model_reasoning_effort = "medium"
             session.pid = pid
             session.isActive = true
             session.isCompleted = false
-            session.terminalAvailable = Self.isRunningInTerminal(pid: pid)
+            session.terminalAvailable = Shell.isRunningInTerminal(pid: pid)
 
             if session.instructionsContent == nil {
                 readInstructions(for: session)
@@ -176,7 +158,7 @@ model_reasoning_effort = "medium"
             }
         }
 
-        if !state.sessions.isEmpty && state.activeSession == nil {
+        if state.activeSession == nil && !state.sessions.isEmpty {
             state.activeSessionIndex = 0
         }
     }
@@ -296,7 +278,7 @@ model_reasoning_effort = "medium"
     }
 
     private func checkSessionLifecycle() {
-        let activePids = currentCodexPIDs()
+        let activePids = Set(Shell.pgrep(descriptor.executableName))
         for session in state.sessions where session.providerID == .codex && session.isActive {
             if let pid = session.pid, !activePids.contains(pid) {
                 session.isCompleted = true
@@ -356,42 +338,6 @@ model_reasoning_effort = "medium"
         }
     }
 
-    private func currentWorkingDirectory(for pid: Int32) -> String? {
-        let pipe = Pipe()
-        let lsof = Process()
-        lsof.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        lsof.arguments = ["-p", String(pid), "-Fn", "-d", "cwd"]
-        lsof.standardOutput = pipe
-        lsof.standardError = FileHandle.nullDevice
-
-        guard (try? lsof.run()) != nil else { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        lsof.waitUntilExit()
-
-        guard let output = String(data: data, encoding: .utf8) else { return nil }
-        guard let line = output.components(separatedBy: "\n").last(where: { $0.hasPrefix("n/") }) else { return nil }
-        return String(line.dropFirst())
-    }
-
-    private func currentCodexPIDs() -> Set<Int32> {
-        let pipe = Pipe()
-        let pgrep = Process()
-        pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        pgrep.arguments = ["-x", descriptor.executableName]
-        pgrep.standardOutput = pipe
-        pgrep.standardError = FileHandle.nullDevice
-        guard (try? pgrep.run()) != nil else { return [] }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        pgrep.waitUntilExit()
-        guard let output = String(data: data, encoding: .utf8) else { return [] }
-        return Set(
-            output
-                .components(separatedBy: "\n")
-                .compactMap { Int32($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
-                .filter { $0 > 0 }
-        )
-    }
-
     private func codexConfigURL() -> URL {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/config.toml")
     }
@@ -413,112 +359,5 @@ model_reasoning_effort = "medium"
             return nil
         }
         return String(filename[range])
-    }
-
-    private static func isRunningInTerminal(pid: Int32) -> Bool {
-        var currentPid = pid
-        for _ in 0..<10 {
-            let pipe = Pipe()
-            let ps = Process()
-            ps.executableURL = URL(fileURLWithPath: "/bin/ps")
-            ps.arguments = ["-p", String(currentPid), "-o", "ppid=,comm="]
-            ps.standardOutput = pipe
-            ps.standardError = FileHandle.nullDevice
-            guard (try? ps.run()) != nil else { return false }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            ps.waitUntilExit()
-            guard let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !output.isEmpty else { return false }
-            let parts = output.split(separator: " ", maxSplits: 1)
-            guard parts.count >= 2 else { return false }
-            let comm = String(parts[1])
-            if comm.contains("Terminal") || comm.contains("iTerm") { return true }
-            guard let ppid = Int32(parts[0].trimmingCharacters(in: .whitespaces)), ppid > 1 else { return false }
-            currentPid = ppid
-        }
-        return false
-    }
-
-    private func sendToTerminal(_ message: String, processName: String) {
-        guard AXIsProcessTrusted() else {
-            codexLog.warning("Accessibility permission not granted")
-            return
-        }
-
-        let escaped = message
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-
-        let terminalScript = """
-        tell application "Terminal"
-            set targetTab to missing value
-            repeat with w in windows
-                repeat with t in tabs of w
-                    if busy of t then
-                        if processes of t contains "\(processName)" then
-                            set targetTab to t
-                            set frontmost of w to true
-                            exit repeat
-                        end if
-                    end if
-                end repeat
-                if targetTab is not missing value then exit repeat
-            end repeat
-            if targetTab is not missing value then
-                tell application "System Events" to tell process "Terminal"
-                    keystroke "\(escaped)"
-                    keystroke return
-                end tell
-            end if
-        end tell
-        """
-
-        var error: NSDictionary?
-        NSAppleScript(source: terminalScript)?.executeAndReturnError(&error)
-        if error == nil { return }
-
-        let iTermScript = """
-        tell application "iTerm2"
-            repeat with w in windows
-                repeat with t in tabs of w
-                    repeat with s in sessions of t
-                        if is processing of s then
-                            tell s to write text "\(escaped)"
-                            return
-                        end if
-                    end repeat
-                end repeat
-            end repeat
-        end tell
-        """
-        NSAppleScript(source: iTermScript)?.executeAndReturnError(nil)
-    }
-
-    private func runInTerminal(_ command: String) {
-        let escaped = command
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        let script = """
-        tell application "Terminal"
-            activate
-            do script "\(escaped)"
-        end tell
-        """
-        var error: NSDictionary?
-        NSAppleScript(source: script)?.executeAndReturnError(&error)
-        if error == nil { return }
-
-        let iTermScript = """
-        tell application "iTerm2"
-            activate
-            tell current window
-                create tab with default profile
-                tell current session
-                    write text "\(escaped)"
-                end tell
-            end tell
-        end tell
-        """
-        NSAppleScript(source: iTermScript)?.executeAndReturnError(nil)
     }
 }
