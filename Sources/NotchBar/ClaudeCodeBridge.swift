@@ -108,6 +108,9 @@ class ClaudeCodeBridge: AgentProviderController {
     var gitTimer: Timer?
     var handledEvents: Set<String> = []
     var approvalTimers: [String: Timer] = [:]
+    var socketServer: SocketServer?
+    /// Pending approval semaphores keyed by requestId — signalled when user approves/rejects
+    var pendingResponses: [String: (String) -> Void] = [:]
 
     init(state: NotchState) {
         self.state = state
@@ -126,6 +129,12 @@ class ClaudeCodeBridge: AgentProviderController {
         try? fm.createDirectory(at: binDir, withIntermediateDirectories: true)
         writeHookScript()
         requestNotificationPermission()
+
+        // Start socket server for fast IPC with hook scripts
+        socketServer = SocketServer()
+        socketServer?.start { [weak self] event, hookType, respond in
+            self?.handleSocketEvent(event, hookType: hookType, respond: respond)
+        }
 
         dirFD = open(eventsDir.path, O_EVTONLY)
         guard dirFD >= 0 else { log.error("Failed to open events dir at \(self.eventsDir.path)"); return }
@@ -310,7 +319,32 @@ class ClaudeCodeBridge: AgentProviderController {
         if handledEvents.count > 500 { handledEvents.removeAll() }
     }
 
-    // MARK: - Handle Event
+    // MARK: - Socket Event Handler (runs on background thread)
+
+    private func handleSocketEvent(_ event: ClaudeCodeEvent, hookType: String, respond: @escaping (String) -> Void) {
+        let toolName = event.toolName ?? "Tool"
+        let toolUseId = event.toolUseId ?? event.requestId ?? UUID().uuidString
+
+        if hookType == "pre-tool-use" || hookType == "pretooluse" {
+            let shouldAuto = AppSettings.shared.shouldAutoApprove(toolName: toolName)
+            if shouldAuto {
+                // Auto-approve immediately on this thread — no main thread round-trip
+                respond("{\"decision\":\"approve\"}")
+            } else {
+                // Store the respond callback — will be called when user approves/rejects
+                DispatchQueue.main.async { [weak self] in
+                    self?.pendingResponses[toolUseId] = respond
+                }
+            }
+        }
+
+        // Dispatch UI update to main thread
+        DispatchQueue.main.async { [weak self] in
+            self?.handleEvent(event)
+        }
+    }
+
+    // MARK: - Handle Event (must run on main thread)
 
     func handleEvent(_ event: ClaudeCodeEvent) {
         guard let sessionId = event.sessionId else {
@@ -448,6 +482,18 @@ class ClaudeCodeBridge: AgentProviderController {
 
     private func resolveApproval(requestId: String, sessionId: UUID, decision: String, reason: String? = nil, newStatus: TaskItem.TaskStatus) {
         log.info("\(decision.capitalized) request \(requestId)")
+
+        // Respond via socket if the connection is waiting
+        if let respond = pendingResponses.removeValue(forKey: requestId) {
+            var json: [String: Any] = ["decision": decision]
+            if let reason = reason { json["reason"] = reason }
+            if let data = try? JSONSerialization.data(withJSONObject: json),
+               let str = String(data: data, encoding: .utf8) {
+                DispatchQueue.global(qos: .userInteractive).async { respond(str) }
+            }
+        }
+
+        // Also write file-based response (fallback for old hook scripts)
         writeApprovalResponse(requestId: requestId, decision: decision, reason: reason)
         approvalTimers[requestId]?.invalidate()
         approvalTimers.removeValue(forKey: requestId)
@@ -622,6 +668,14 @@ class ClaudeCodeBridge: AgentProviderController {
         }
         approvalTimers.removeAll()
 
+        // Auto-approve any socket-pending approvals
+        for (requestId, respond) in pendingResponses {
+            respond("{\"decision\":\"approve\"}")
+            log.info("Auto-approved socket request \(requestId) during shutdown")
+        }
+        pendingResponses.removeAll()
+        socketServer?.stop()
+
         if let files = try? FileManager.default.contentsOfDirectory(at: eventsDir, includingPropertiesForKeys: nil) {
             for file in files { try? FileManager.default.removeItem(at: file) }
         }
@@ -642,68 +696,31 @@ class ClaudeCodeBridge: AgentProviderController {
         let timeoutSeconds = AppSettings.shared.approvalTimeoutMinutes * 60
         let defaultTimeout = timeoutSeconds > 0 ? timeoutSeconds : 300
 
-        // Build auto-approve list from current settings
-        let settings = AppSettings.shared
-        var autoTools: [String] = []
-        if settings.autoApproveReads { autoTools.append(contentsOf: ["Read", "Grep", "Glob"]) }
-        if settings.autoApproveEdits { autoTools.append(contentsOf: ["Edit", "Write", "NotebookEdit"]) }
-        if settings.autoApproveBash { autoTools.append("Bash") }
-        if settings.autoApproveAgents { autoTools.append("Agent") }
-        let autoApproveList = autoTools.joined(separator: "|")
-
-        // Pure shell — no python3 dependency
         let script = """
 #!/bin/bash
-# NotchBar hook — auto-approved tools are instant, others block for approval
-EVENTS_DIR="$HOME/.notchbar/events"
-RESPONSES_DIR="$HOME/.notchbar/responses"
+# NotchBar hook — socket-based IPC for fast approvals
+# Falls back to auto-approve if NotchBar is not running.
+SOCK="$HOME/.notchbar/notchbar.sock"
 HOOK_TYPE="${1:-notification}"
-REQUEST_ID="$(date +%s)-$$-$RANDOM"
 INPUT=$(cat -)
 
-# If NotchBar is not running, auto-approve immediately
-if ! pgrep -x "NotchBar" >/dev/null 2>&1; then
-    [ "$HOOK_TYPE" = "pre-tool-use" ] && echo '{"decision":"approve"}'
-    exit 0
-fi
+# Inject hook_type into the JSON
+EVENT=$(echo "$INPUT" | awk -v ht="$HOOK_TYPE" '
+  NR==1 { sub(/^[[:space:]]*\\{/, "{\\\"hook_type\\\":\\\"" ht "\\\",") }
+  { print }
+')
 
-# Extract tool name
-TOOL_NAME=$(echo "$INPUT" | grep -o '"tool_name" *: *"[^"]*"' | head -1 | sed 's/.*: *"\\([^"]*\\)".*/\\1/')
-
-# Send event to NotchBar in background (never blocks Claude)
-{
-    mkdir -p "$EVENTS_DIR"
-    echo "$INPUT" | awk -v ht="$HOOK_TYPE" -v rid="$REQUEST_ID" '
-      NR==1 { sub(/^[[:space:]]*\\{/, "{\\\"hook_type\\\":\\\"" ht "\\\",\\\"request_id\\\":\\\"" rid "\\\",") }
-      { print }
-    ' > "$EVENTS_DIR/$REQUEST_ID.json"
-} &
-
-# Post-tool-use: fire and forget
-[ "$HOOK_TYPE" != "pre-tool-use" ] && exit 0
-
-# Auto-approved tools: approve instantly in the hook (no round-trip to NotchBar)
-AUTO_PATTERN="\(autoApproveList)"
-if [ -n "$AUTO_PATTERN" ] && echo "$TOOL_NAME" | grep -qE "^($AUTO_PATTERN)$"; then
-    echo '{"decision":"approve"}'
-    exit 0
-fi
-
-# Tools needing approval: wait for NotchBar's response file
-mkdir -p "$RESPONSES_DIR"
-RESPONSE_FILE="$RESPONSES_DIR/$REQUEST_ID.json"
-TIMEOUT_SECS=\(defaultTimeout)
-DEADLINE=$(($(date +%s) + TIMEOUT_SECS))
-while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-    [ -f "$RESPONSE_FILE" ] && cat "$RESPONSE_FILE" && rm -f "$RESPONSE_FILE" && exit 0
-    sleep 0.2
-    # Every ~5s check if NotchBar died
-    if ! pgrep -x "NotchBar" >/dev/null 2>&1; then
-        echo '{"decision":"approve"}'
+# Try socket connection to NotchBar
+if [ -S "$SOCK" ]; then
+    RESPONSE=$(echo "$EVENT" | nc -U "$SOCK" 2>/dev/null)
+    if [ -n "$RESPONSE" ]; then
+        echo "$RESPONSE"
         exit 0
     fi
-done
-echo '{"decision":"approve"}'
+fi
+
+# Socket unavailable (NotchBar not running): auto-approve
+[ "$HOOK_TYPE" = "pre-tool-use" ] && echo '{"decision":"approve"}'
 """
         let url = binDir.appendingPathComponent("notchbar-hook")
         do {
