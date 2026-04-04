@@ -296,7 +296,9 @@ class ClaudeCodeBridge: AgentProviderController {
             session = existing
         } else {
             // Only create sessions for real project directories
-            guard cwd.hasPrefix("/Users/"), !cwd.contains("/Library/"), cwd.components(separatedBy: "/").count >= 4 else { return }
+            guard cwd.hasPrefix("/Users/"), !cwd.contains("/Library/"),
+                  cwd.components(separatedBy: "/").count >= 4,
+                  FileManager.default.fileExists(atPath: cwd) else { return }
             let projectName = (cwd as NSString).lastPathComponent
             let s = AgentSession(name: projectName, projectPath: cwd, providerID: .claude)
             s.isActive = true; s.statusMessage = "Connected"
@@ -489,9 +491,11 @@ class ClaudeCodeBridge: AgentProviderController {
                     session.updateCost()
                     changed = true
 
-                    let threshold = AppSettings.shared.costAlertThreshold
-                    if session.estimatedCost >= threshold && (session.estimatedCost - ModelPricing.estimate(provider: session.providerID, model: session.modelName, inputTokens: input, outputTokens: 0)) < threshold {
-                        sendNotification(title: "Cost Alert", body: "\(session.name) has exceeded \(String(format: "$%.2f", threshold))")
+                    if AppSettings.shared.showCostTracking {
+                        let threshold = AppSettings.shared.costAlertThreshold
+                        if session.estimatedCost >= threshold && (session.estimatedCost - ModelPricing.estimate(provider: session.providerID, model: session.modelName, inputTokens: input, outputTokens: 0)) < threshold {
+                            sendNotification(title: "Cost Alert", body: "\(session.name) has exceeded \(String(format: "$%.2f", threshold))")
+                        }
                     }
                 case .userMessage:
                     session.isWaitingForUser = false

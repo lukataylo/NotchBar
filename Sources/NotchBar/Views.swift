@@ -28,7 +28,7 @@ struct CollapsedView: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(brandOrange).lineLimit(1)
                 } else if session.isCompleted {
-                    Text("Completed \(session.costSummary)")
+                    Text("Completed" + (AppSettings.shared.showCostTracking ? " \(session.costSummary)" : ""))
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(brandSuccess).lineLimit(1)
                 } else {

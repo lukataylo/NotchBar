@@ -65,7 +65,7 @@ struct SessionCardCollapsed: View {
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundColor(session.sessionState.stateColor)
 
-                if !session.costSummary.isEmpty {
+                if AppSettings.shared.showCostTracking && !session.costSummary.isEmpty {
                     Text(session.costSummary)
                         .font(.system(size: 9, design: .monospaced))
                         .foregroundColor(brandOrange.opacity(0.6))
@@ -105,6 +105,7 @@ struct SessionCardExpanded: View {
     @ObservedObject var state: NotchState
     var onCollapse: () -> Void
 
+    @State private var messageText: String = ""
     @State private var showClaudeMd: Bool = false
     @State private var editingClaudeMd: Bool = false
     @State private var claudeMdDraft: String = ""
@@ -167,9 +168,11 @@ struct SessionCardExpanded: View {
             // Stats bar
             statsBar
 
-            // Keyboard shortcut hints (only when there's a pending approval)
+            // Approval hints or message input
             if session.pendingApproval != nil {
                 approvalHints
+            } else if session.isActive && !session.isCompleted {
+                messageInput
             }
         }
         .background(Color.white.opacity(0.03))
@@ -344,7 +347,7 @@ struct SessionCardExpanded: View {
             if !session.tokenSummary.isEmpty {
                 HStack(spacing: 12) {
                     Label(session.tokenSummary, systemImage: "number")
-                    if !session.costSummary.isEmpty {
+                    if AppSettings.shared.showCostTracking && !session.costSummary.isEmpty {
                         Label(session.costSummary, systemImage: "dollarsign.circle")
                             .foregroundColor(brandOrange.opacity(0.5))
                     }
@@ -442,6 +445,45 @@ struct SessionCardExpanded: View {
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 6)
+    }
+
+    // MARK: - Message Input
+
+    var messageInput: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "terminal")
+                .font(.system(size: 10))
+                .foregroundColor(.white.opacity(0.3))
+            ZStack(alignment: .leading) {
+                if messageText.isEmpty {
+                    Text(session.isWaitingForUser ? "Reply to \(session.providerShortName)..." : "Message \(session.providerShortName)...")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.3))
+                }
+                TextField("", text: $messageText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
+                    .foregroundColor(.white)
+                    .onSubmit { send() }
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(Color.white.opacity(0.08))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(session.isWaitingForUser ? SessionState.waitingForUser.stateColor.opacity(0.4) : Color.white.opacity(0.06), lineWidth: 0.5)
+        )
+        .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 8)
+    }
+
+    func send() {
+        let text = messageText.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return }
+        messageText = ""
+        DispatchQueue.global(qos: .userInitiated).async {
+            TerminalHelper.sendInput(text, processName: "claude")
+        }
     }
 
     // MARK: - Helpers

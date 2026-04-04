@@ -10,6 +10,7 @@ class AppSettings: ObservableObject {
     @AppStorage("notifyWaitingForInput") var notifyWaitingForInput: Bool = true
     @AppStorage("notifyApprovalNeeded") var notifyApprovalNeeded: Bool = true
     @AppStorage("costAlertThreshold") var costAlertThreshold: Double = 5.0
+    @AppStorage("showCostTracking") var showCostTracking: Bool = false  // Off by default (most users are on Max plan)
 
     // General
     @AppStorage("launchAtLogin") var launchAtLogin: Bool = false
@@ -167,11 +168,21 @@ struct SettingsView: View {
                 .padding(6)
             }
 
-            GroupBox("Cost Alert") {
-                HStack {
-                    Text("Alert when session cost exceeds:")
-                    TextField("", value: $settings.costAlertThreshold, format: .currency(code: "USD"))
-                        .frame(width: 80)
+            GroupBox("Cost Tracking (API key users)") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle(isOn: $settings.showCostTracking) {
+                        Text("Show cost estimates")
+                    }
+                    Text("Enable if using Claude Code with an API key. Disable for Max/Pro plan users.")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    if settings.showCostTracking {
+                        HStack {
+                            Text("Alert when session cost exceeds:")
+                            TextField("", value: $settings.costAlertThreshold, format: .currency(code: "USD"))
+                                .frame(width: 80)
+                        }
+                    }
                 }
                 .padding(6)
             }
