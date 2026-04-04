@@ -127,7 +127,10 @@ model_reasoning_effort = "medium"
 
         let latestByPath = latestSessionFilesByProjectPath()
         for pid in pids {
-            guard let cwd = Shell.cwd(for: pid) else { continue }
+            guard let cwd = Shell.cwd(for: pid),
+                  cwd.hasPrefix("/Users/"),
+                  !cwd.contains("/Library/"),
+                  cwd.components(separatedBy: "/").count >= 4 else { continue }
             let projectName = (cwd as NSString).lastPathComponent
             let session = existingSession(for: cwd) ?? AgentSession(name: projectName, projectPath: cwd, providerID: .codex)
 
