@@ -1,18 +1,18 @@
 #!/bin/bash
-# NotchClaude integration tests (v2.0)
+# NotchBar integration tests (v2.0)
 # These tests validate the build, hook script, and event format
 # without launching the GUI app (safe for CI/headless environments).
 set -e
-EVENTS_DIR="$HOME/.notchclaude/events"
-RESPONSES_DIR="$HOME/.notchclaude/responses"
-HOOK="$HOME/.notchclaude/bin/notchclaude-hook"
-LOG_FILE="$HOME/.notchclaude/hook.log"
+EVENTS_DIR="$HOME/.notchbar/events"
+RESPONSES_DIR="$HOME/.notchbar/responses"
+HOOK="$HOME/.notchbar/bin/notchbar-hook"
+LOG_FILE="$HOME/.notchbar/hook.log"
 PASS=0; FAIL=0
 
 pass() { PASS=$((PASS + 1)); echo "  ✓ $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ✗ $1: $2"; }
 
-echo "NotchClaude Tests (v2.0)"
+echo "NotchBar Tests (v2.0)"
 echo "========================"
 
 # Clean up test artifacts from previous runs
@@ -21,13 +21,13 @@ rm -f "$EVENTS_DIR"/test-*.json "$RESPONSES_DIR"/test-*.json 2>/dev/null
 # 1. Build
 echo ""; echo "Build:"
 swift build -c debug 2>&1 | tail -1
-[ -f .build/debug/NotchClaude ] && pass "Binary builds" || fail "Build" "binary not found"
+[ -f .build/debug/NotchBar ] && pass "Binary builds" || fail "Build" "binary not found"
 
 # 2. Hook script checks (if it exists — may not if app hasn't been run yet)
 echo ""; echo "Hook Script:"
 if [ -f "$HOOK" ]; then
     [ -x "$HOOK" ] && pass "Exists and executable" || fail "Hook script" "not executable"
-    grep -q "pgrep" "$HOOK" && pass "Has NotchClaude detection guard" || fail "Hook" "missing pgrep guard"
+    grep -q "pgrep" "$HOOK" && pass "Has NotchBar detection guard" || fail "Hook" "missing pgrep guard"
     grep -q "RESPONSES_DIR" "$HOOK" && pass "Has response directory support" || fail "Hook" "missing response dir"
     grep -q "MAX_ITERS" "$HOOK" && pass "Has correct timeout logic (MAX_ITERS)" || fail "Hook" "using old ELAPSED timeout"
     grep -q "log_msg" "$HOOK" && pass "Has logging support" || fail "Hook" "missing logging"
@@ -59,7 +59,7 @@ RESPONSE_JSON='{"decision":"approve"}'
 echo "$RESPONSE_JSON" | plutil -lint -s - 2>/dev/null \
     && pass "Approve response is valid JSON" || fail "Response" "invalid JSON"
 
-REJECT_JSON='{"decision":"deny","reason":"User rejected from NotchClaude"}'
+REJECT_JSON='{"decision":"deny","reason":"User rejected from NotchBar"}'
 echo "$REJECT_JSON" | plutil -lint -s - 2>/dev/null \
     && pass "Reject response is valid JSON" || fail "Response" "invalid reject JSON"
 
@@ -68,23 +68,23 @@ echo ""; echo "Settings:"
 SETTINGS="$HOME/.claude/settings.json"
 if [ -f "$SETTINGS" ]; then
     plutil -lint -s "$SETTINGS" 2>/dev/null && pass "settings.json valid JSON" || fail "Settings" "invalid JSON"
-    grep -q "notchclaude-hook" "$SETTINGS" \
-        && pass "NotchClaude hooks found in settings.json" \
-        || pass "No NotchClaude hooks in settings (not yet installed)"
+    grep -q "notchbar-hook" "$SETTINGS" \
+        && pass "NotchBar hooks found in settings.json" \
+        || pass "No NotchBar hooks in settings (not yet installed)"
 else
     pass "No settings file (hooks not installed yet)"
 fi
 
 # 6. Directory structure
 echo ""; echo "Directories:"
-[ -d "$HOME/.notchclaude" ] && pass "~/.notchclaude directory exists" || pass "~/.notchclaude not created yet (app not run)"
-[ -d "$HOME/.notchclaude/events" ] && pass "events/ directory exists" || pass "events/ not created yet"
-[ -d "$HOME/.notchclaude/responses" ] && pass "responses/ directory exists" || pass "responses/ not created yet"
+[ -d "$HOME/.notchbar" ] && pass "~/.notchbar directory exists" || pass "~/.notchbar not created yet (app not run)"
+[ -d "$HOME/.notchbar/events" ] && pass "events/ directory exists" || pass "events/ not created yet"
+[ -d "$HOME/.notchbar/responses" ] && pass "responses/ directory exists" || pass "responses/ not created yet"
 
 # 7. Info.plist validation
 echo ""; echo "App Bundle:"
-if [ -f Sources/NotchClaude/Info.plist ]; then
-    plutil -lint -s Sources/NotchClaude/Info.plist 2>/dev/null \
+if [ -f Sources/NotchBar/Info.plist ]; then
+    plutil -lint -s Sources/NotchBar/Info.plist 2>/dev/null \
         && pass "Info.plist is valid" || fail "Info.plist" "invalid plist"
 fi
 
