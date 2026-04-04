@@ -13,8 +13,6 @@ struct ProviderCapabilities {
     let liveReasoning: Bool
     let sessionHistory: Bool
     let integrationInstall: Bool
-    let sendInput: Bool
-    let resume: Bool
 }
 
 struct ProviderDescriptor {
@@ -67,8 +65,6 @@ protocol AgentProviderController: AnyObject {
     func cleanup()
     func installIntegration() -> Bool
     func removeIntegration() -> Bool
-    func sendInput(_ message: String, for session: AgentSession?)
-    func sendQuickCommand(_ command: String, for session: AgentSession?)
     func approveAction(requestId: String, sessionId: UUID)
     func rejectAction(requestId: String, sessionId: UUID)
     func listPastSessions() -> [PastSession]
@@ -78,8 +74,6 @@ protocol AgentProviderController: AnyObject {
 extension AgentProviderController {
     func installIntegration() -> Bool { false }
     func removeIntegration() -> Bool { false }
-    func sendInput(_ message: String, for session: AgentSession?) {}
-    func sendQuickCommand(_ command: String, for session: AgentSession?) { sendInput(command, for: session) }
     func approveAction(requestId: String, sessionId: UUID) {}
     func rejectAction(requestId: String, sessionId: UUID) {}
     func listPastSessions() -> [PastSession] { [] }
@@ -106,8 +100,6 @@ enum ProviderCatalog {
             liveReasoning: true,
             sessionHistory: true,
             integrationInstall: true,
-            sendInput: true,
-            resume: true
         )
     )
 
@@ -130,8 +122,6 @@ enum ProviderCatalog {
             liveReasoning: true,
             sessionHistory: true,
             integrationInstall: true,
-            sendInput: true,
-            resume: true
         )
     )
 

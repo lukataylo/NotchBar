@@ -221,7 +221,6 @@ class AgentSession: Identifiable, ObservableObject {
     @Published var gitBranch: String? = nil
     @Published var gitChangedFiles: Int = 0
     @Published var pendingApproval: PendingApproval? = nil
-    @Published var terminalAvailable: Bool = false
 
     var transcriptReader: (any LiveTranscriptReader)? = nil
     var startedAt: Date = Date()

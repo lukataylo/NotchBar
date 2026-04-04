@@ -93,12 +93,8 @@ class ClaudeCodeBridge: AgentProviderController {
     static var shared: ClaudeCodeBridge?
     let descriptor = ProviderCatalog.claude
 
-    let eventsDir: URL
-    let responsesDir: URL
     let binDir: URL
     let state: NotchState
-    var source: DispatchSourceFileSystemObject?
-    var dirFD: Int32 = -1
 
     var sessionMap: [String: UUID] = [:]
     var toolCounts: [String: Int] = [:]
@@ -106,40 +102,31 @@ class ClaudeCodeBridge: AgentProviderController {
     var transcriptTimer: Timer?
     var sessionLifecycleTimer: Timer?
     var gitTimer: Timer?
-    var handledEvents: Set<String> = []
     var approvalTimers: [String: Timer] = [:]
     var socketServer: SocketServer?
-    /// Pending approval semaphores keyed by requestId — signalled when user approves/rejects
     var pendingResponses: [String: (String) -> Void] = [:]
 
     init(state: NotchState) {
         self.state = state
         let base = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".notchbar")
-        eventsDir = base.appendingPathComponent("events")
-        responsesDir = base.appendingPathComponent("responses")
         binDir = base.appendingPathComponent("bin")
         Self.shared = self
     }
 
     func start() {
-        log.info("Bridge initializing at \(self.eventsDir.deletingLastPathComponent().path)")
-        let fm = FileManager.default
-        try? fm.createDirectory(at: eventsDir, withIntermediateDirectories: true)
-        try? fm.createDirectory(at: responsesDir, withIntermediateDirectories: true)
-        try? fm.createDirectory(at: binDir, withIntermediateDirectories: true)
+        log.info("Bridge initializing")
+        try? FileManager.default.createDirectory(at: binDir, withIntermediateDirectories: true)
         writeHookScript()
         requestNotificationPermission()
 
-        // Start socket server for fast IPC with hook scripts
+        // Socket server for IPC with hook scripts
         socketServer = SocketServer()
         socketServer?.onTimeout = { [weak self] event in
             let requestId = event.toolUseId ?? event.requestId ?? ""
             DispatchQueue.main.async {
-                // Clean up orphaned callback and timer so they don't write to dead sockets
                 self?.pendingResponses.removeValue(forKey: requestId)
                 self?.approvalTimers[requestId]?.invalidate()
                 self?.approvalTimers.removeValue(forKey: requestId)
-                // Clear pending approval UI
                 if let session = self?.state.sessions.first(where: { $0.pendingApproval?.requestId == requestId }) {
                     session.pendingApproval = nil
                     session.statusMessage = "Timed out (auto-approved)"
@@ -150,20 +137,6 @@ class ClaudeCodeBridge: AgentProviderController {
         socketServer?.start { [weak self] event, hookType, respond in
             self?.handleSocketEvent(event, hookType: hookType, respond: respond)
         }
-
-        dirFD = open(eventsDir.path, O_EVTONLY)
-        guard dirFD >= 0 else { log.error("Failed to open events dir at \(self.eventsDir.path)"); return }
-        source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: dirFD, eventMask: .write, queue: .main)
-        guard source != nil else {
-            log.error("Failed to create DispatchSource for events dir")
-            close(dirFD)
-            dirFD = -1
-            return
-        }
-        source?.setEventHandler { [weak self] in self?.processEvents() }
-        source?.setCancelHandler { [weak self] in if let fd = self?.dirFD, fd >= 0 { close(fd) } }
-        source?.resume()
-        log.info("Bridge started, watching \(self.eventsDir.path)")
 
         transcriptTimer = Timer.scheduledTimer(withTimeInterval: AppSettings.shared.transcriptPollInterval, repeats: true) { [weak self] _ in
             self?.pollTranscripts()
@@ -233,28 +206,9 @@ class ClaudeCodeBridge: AgentProviderController {
                 session.pid = s.pid
                 self.state.sessions.append(session)
                 self.readClaudeMd(for: session)
-                self.detectTerminal(for: session)
             }
             if !self.state.sessions.isEmpty { self.state.activeSessionIndex = 0 }
             self.state.objectWillChange.send()
-        }
-    }
-
-    // MARK: - Terminal Detection
-
-    func detectTerminal(for session: ClaudeSession) {
-        guard let pid = session.pid else { return }
-        DispatchQueue.global(qos: .utility).async {
-            var available = Shell.isRunningInTerminal(pid: pid)
-            // Fallback: if parent-chain walk didn't find Terminal/iTerm,
-            // check if either app is running at all (covers permission edge cases)
-            if !available {
-                let apps = NSWorkspace.shared.runningApplications
-                available = apps.contains { $0.bundleIdentifier == "com.apple.Terminal" || $0.bundleIdentifier == "com.googlecode.iterm2" }
-            }
-            DispatchQueue.main.async {
-                session.terminalAvailable = available
-            }
         }
     }
 
@@ -300,46 +254,6 @@ class ClaudeCodeBridge: AgentProviderController {
         for session in state.sessions where session.isActive && !session.isCompleted {
             GitIntegration.fetchStatus(for: session)
         }
-    }
-
-    // MARK: - Process Events
-
-    func processEvents() {
-        let fm = FileManager.default
-        guard let files = try? fm.contentsOfDirectory(at: eventsDir, includingPropertiesForKeys: nil) else { return }
-
-        for file in files.filter({ $0.pathExtension == "json" }).sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-            let filename = file.lastPathComponent
-
-            if handledEvents.contains(filename) { continue }
-
-            var data: Data
-            do {
-                data = try Data(contentsOf: file)
-            } catch {
-                log.error("Failed to read event file \(filename): \(error.localizedDescription)")
-                continue
-            }
-
-            var event: ClaudeCodeEvent
-            do {
-                event = try JSONDecoder().decode(ClaudeCodeEvent.self, from: data)
-            } catch {
-                log.error("Failed to decode event file \(filename): \(error.localizedDescription)")
-                if let a = try? fm.attributesOfItem(atPath: file.path),
-                   let d = a[.creationDate] as? Date, Date().timeIntervalSince(d) > 10 {
-                    try? fm.removeItem(at: file)
-                }
-                continue
-            }
-
-            handledEvents.insert(filename)
-            handleEvent(event)
-            try? fm.removeItem(at: file)
-        }
-
-        // Prevent unbounded growth — events are already deleted from disk
-        if handledEvents.count > 500 { handledEvents.removeAll() }
     }
 
     // MARK: - Socket Event Handler (runs on background thread)
@@ -392,7 +306,6 @@ class ClaudeCodeBridge: AgentProviderController {
             session = s
             if state.sessions.count == 1 { state.activeSessionIndex = 0 }
             readClaudeMd(for: s)
-            detectTerminal(for: s)
         }
 
         // Update permission mode from event
@@ -519,8 +432,6 @@ class ClaudeCodeBridge: AgentProviderController {
             }
         }
 
-        // Also write file-based response (fallback for old hook scripts)
-        writeApprovalResponse(requestId: requestId, decision: decision, reason: reason)
         approvalTimers[requestId]?.invalidate()
         approvalTimers.removeValue(forKey: requestId)
 
@@ -533,19 +444,6 @@ class ClaudeCodeBridge: AgentProviderController {
                 session.statusMessage = decision == "approve" ? "Approved" : "Rejected"
             }
             state.objectWillChange.send()
-        }
-    }
-
-    private func writeApprovalResponse(requestId: String, decision: String, reason: String? = nil) {
-        var response: [String: Any] = ["decision": decision]
-        if let reason = reason { response["reason"] = reason }
-        do {
-            let data = try JSONSerialization.data(withJSONObject: response)
-            let url = responsesDir.appendingPathComponent("\(requestId).json")
-            try data.write(to: url, options: .atomic)
-            log.info("Wrote approval response: \(decision) for \(requestId)")
-        } catch {
-            log.error("Failed to write approval response for \(requestId): \(error.localizedDescription)")
         }
     }
 
@@ -621,14 +519,6 @@ class ClaudeCodeBridge: AgentProviderController {
         if changed { state.objectWillChange.send() }
     }
 
-    func sendInput(_ message: String, for session: AgentSession?) {
-        sendToTerminal(message)
-    }
-
-    func sendQuickCommand(_ command: String, for session: AgentSession?) {
-        sendSlashCommand(command)
-    }
-
     func installIntegration() -> Bool {
         installHooks()
     }
@@ -645,70 +535,18 @@ class ClaudeCodeBridge: AgentProviderController {
         SessionHistoryManager.shared.resumeSession(session)
     }
 
-    // MARK: - Send Message to Terminal
-
-    func sendToTerminal(_ message: String) {
-        log.info("Sending to terminal: \(String(message.prefix(80)))")
-
-        if !AXIsProcessTrusted() {
-            log.warning("Accessibility permission not granted, prompting user")
-            DispatchQueue.main.async {
-                let alert = NSAlert()
-                alert.messageText = "Accessibility Permission Required"
-                alert.informativeText = "NotchBar needs Accessibility access to send messages to your terminal.\n\nGo to System Settings → Privacy & Security → Accessibility and enable NotchBar."
-                alert.addButton(withTitle: "Open System Settings")
-                alert.addButton(withTitle: "Cancel")
-                if alert.runModal() == .alertFirstButtonReturn {
-                    let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true] as CFDictionary
-                    AXIsProcessTrustedWithOptions(options)
-                }
-            }
-            return
-        }
-
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            TerminalHelper.sendInput(message, processName: "claude")
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                guard let session = self?.state.activeSession else { return }
-                session.appendTask(TaskItem(title: "You: \(String(message.prefix(50)))", status: .completed))
-                self?.state.objectWillChange.send()
-            }
-        }
-    }
-
-    func sendSlashCommand(_ command: String) {
-        sendToTerminal(command)
-        AppSettings.shared.playSound("Pop")
-    }
-
     // MARK: - Cleanup
 
     func cleanup() {
         log.info("Bridge cleaning up...")
-        // Auto-approve any pending approvals before shutting down so Claude Code isn't stuck
-        for (requestId, timer) in approvalTimers {
-            timer.invalidate()
-            writeApprovalResponse(requestId: requestId, decision: "approve")
-            log.info("Auto-approved pending request \(requestId) during shutdown")
-        }
+        // Auto-approve any pending approvals so Claude Code isn't stuck
+        for (_, timer) in approvalTimers { timer.invalidate() }
         approvalTimers.removeAll()
-
-        // Auto-approve any socket-pending approvals
-        for (requestId, respond) in pendingResponses {
+        for (_, respond) in pendingResponses {
             respond("{\"decision\":\"approve\"}")
-            log.info("Auto-approved socket request \(requestId) during shutdown")
         }
         pendingResponses.removeAll()
         socketServer?.stop()
-
-        if let files = try? FileManager.default.contentsOfDirectory(at: eventsDir, includingPropertiesForKeys: nil) {
-            for file in files { try? FileManager.default.removeItem(at: file) }
-        }
-        if let files = try? FileManager.default.contentsOfDirectory(at: responsesDir, includingPropertiesForKeys: nil) {
-            for file in files { try? FileManager.default.removeItem(at: file) }
-        }
-        source?.cancel()
         transcriptTimer?.invalidate()
         sessionLifecycleTimer?.invalidate()
         gitTimer?.invalidate()

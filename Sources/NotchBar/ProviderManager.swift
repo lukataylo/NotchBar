@@ -50,14 +50,6 @@ class ProviderManager {
         controller(for: session)?.removeIntegration() ?? false
     }
 
-    func sendInput(_ message: String, session: AgentSession?) {
-        controller(for: session)?.sendInput(message, for: session)
-    }
-
-    func sendQuickCommand(_ command: String, session: AgentSession?) {
-        controller(for: session)?.sendQuickCommand(command, for: session)
-    }
-
     func approve(requestId: String, session: AgentSession) {
         controller(for: session)?.approveAction(requestId: requestId, sessionId: session.id)
     }

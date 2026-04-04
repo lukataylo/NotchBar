@@ -35,19 +35,6 @@ final class CodexProvider: AgentProviderController {
         sessionLifecycleTimer = nil
     }
 
-    func sendInput(_ message: String, for session: AgentSession?) {
-        TerminalHelper.sendInput(message, processName: descriptor.executableName)
-        guard let session else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            session.appendTask(TaskItem(title: "You: \(String(message.prefix(50)))", status: .completed))
-            self.state.objectWillChange.send()
-        }
-    }
-
-    func sendQuickCommand(_ command: String, for session: AgentSession?) {
-        sendInput(command, for: session)
-    }
-
     func listPastSessions() -> [PastSession] {
         let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/sessions")
         guard let files = try? allSessionFiles(in: root) else { return [] }
@@ -145,7 +132,6 @@ model_reasoning_effort = "medium"
             session.pid = pid
             session.isActive = true
             session.isCompleted = false
-            session.terminalAvailable = Shell.isRunningInTerminal(pid: pid)
 
             if session.instructionsContent == nil {
                 readInstructions(for: session)
