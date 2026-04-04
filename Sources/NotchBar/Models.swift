@@ -51,6 +51,8 @@ struct DiffLine: Identifiable {
     let newLineNum: Int?
 }
 
+private let maxVisibleTasks = 12
+
 struct TaskItem: Identifiable {
     let id = UUID()
     var title: String
@@ -275,6 +277,11 @@ class AgentSession: Identifiable, ObservableObject {
         if isActive && !isCompleted { return .running }
         if isCompleted { return .completed }
         return .idle
+    }
+
+    func appendTask(_ task: TaskItem) {
+        if tasks.count >= maxVisibleTasks { tasks.removeFirst() }
+        tasks.append(task)
     }
 
     var completedTaskCount: Int { tasks.filter { $0.status == .completed }.count }

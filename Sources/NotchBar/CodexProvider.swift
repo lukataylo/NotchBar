@@ -39,8 +39,7 @@ final class CodexProvider: AgentProviderController {
         TerminalHelper.sendInput(message, processName: descriptor.executableName)
         guard let session else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            if session.tasks.count >= 10 { session.tasks.removeFirst() }
-            session.tasks.append(TaskItem(title: "You: \(String(message.prefix(50)))", status: .completed))
+            session.appendTask(TaskItem(title: "You: \(String(message.prefix(50)))", status: .completed))
             self.state.objectWillChange.send()
         }
     }
@@ -174,6 +173,8 @@ model_reasoning_effort = "medium"
 
             guard let reader = session.transcriptReader else { continue }
             let entries = reader.readNew()
+            if entries.isEmpty { continue }
+            changed = true
 
             for entry in entries {
                 switch entry {
@@ -183,93 +184,70 @@ model_reasoning_effort = "medium"
                         session.lastReasoning = String(clean.prefix(180))
                         session.statusMessage = "Thinking"
                         session.isWaitingForUser = false
-                        changed = true
                     }
                 case .usage(let input, let output):
                     session.inputTokens = input
                     session.outputTokens = output
                     session.updateCost()
-                    changed = true
                 case .userMessage:
                     session.isWaitingForUser = false
                     session.isActive = true
                     session.isCompleted = false
-                    changed = true
                 case .modelInfo(let model):
                     session.modelName = model
                     session.updateCost()
-                    changed = true
                 case .status(let status):
                     session.statusMessage = status
-                    changed = true
                 case .response(let text):
                     session.lastResponse = text
                     session.progress = min(session.progress + 0.08, 0.95)
-                    changed = true
                 case .turnStarted:
                     session.isActive = true
                     session.isCompleted = false
                     session.isWaitingForUser = false
                     session.progress = max(session.progress, 0.05)
                     session.statusMessage = "Working"
-                    changed = true
                 case .waitingForInput:
                     session.isWaitingForUser = true
                     session.progress = min(max(session.progress, 0.9), 0.95)
                     session.statusMessage = "Waiting for input"
-                    changed = true
                 case .taskStarted(let event):
                     session.isActive = true
                     session.isCompleted = false
                     session.isWaitingForUser = false
                     session.statusMessage = event.title
-                    if let index = session.tasks.lastIndex(where: { $0.requestId == event.id }) {
-                        session.tasks[index].status = .running
-                        session.tasks[index].detail = event.detail
-                    } else {
-                        if session.tasks.count >= 12 { session.tasks.removeFirst() }
-                        session.tasks.append(TaskItem(
-                            title: event.title,
-                            status: .running,
-                            detail: event.detail,
-                            toolName: event.toolName,
-                            filePath: event.filePath,
-                            requestId: event.id
-                        ))
-                    }
-                    changed = true
+                    applyTaskEvent(event, status: .running, to: session)
                 case .taskCompleted(let event):
                     session.isActive = true
                     session.isWaitingForUser = false
-                    if let index = session.tasks.lastIndex(where: { $0.requestId == event.id }) {
-                        session.tasks[index].status = .completed
-                        session.tasks[index].detail = event.detail
-                    } else {
-                        if session.tasks.count >= 12 { session.tasks.removeFirst() }
-                        session.tasks.append(TaskItem(
-                            title: event.title,
-                            status: .completed,
-                            detail: event.detail,
-                            toolName: event.toolName,
-                            filePath: event.filePath,
-                            requestId: event.id
-                        ))
-                    }
+                    applyTaskEvent(event, status: .completed, to: session)
                     session.progress = min(session.progress + 0.1, 0.88)
-                    changed = true
                 case .sessionCompleted:
                     session.isCompleted = true
                     session.isActive = false
                     session.progress = 1.0
                     session.statusMessage = "Completed"
                     session.isWaitingForUser = false
-                    changed = true
                 }
             }
         }
 
-        if changed {
-            state.objectWillChange.send()
+        if changed { state.objectWillChange.send() }
+    }
+
+    private func applyTaskEvent(_ event: TranscriptTaskEvent, status: TaskItem.TaskStatus, to session: AgentSession) {
+        if let index = session.tasks.lastIndex(where: { $0.requestId == event.id }) {
+            session.tasks[index].status = status
+            session.tasks[index].detail = event.detail
+        } else {
+            session.appendTask(TaskItem(
+                title: event.title,
+                status: status,
+                detail: event.detail,
+                toolName: event.toolName,
+                filePath: event.filePath,
+                requestId: event.id
+            ))
         }
     }
 
@@ -320,22 +298,11 @@ model_reasoning_effort = "medium"
     }
 
     private func readInstructions(for session: AgentSession) {
-        let paths = [
+        Shell.readFirstExisting([
             session.projectPath + "/AGENTS.md",
             session.projectPath + "/.codex/AGENTS.md",
             FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/AGENTS.md").path
-        ]
-
-        DispatchQueue.global(qos: .utility).async {
-            for path in paths {
-                if let content = try? String(contentsOfFile: path, encoding: .utf8), !content.isEmpty {
-                    DispatchQueue.main.async {
-                        session.instructionsContent = content
-                    }
-                    return
-                }
-            }
-        }
+        ]) { session.instructionsContent = $0 }
     }
 
     private func codexConfigURL() -> URL {

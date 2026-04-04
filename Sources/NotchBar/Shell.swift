@@ -51,6 +51,33 @@ enum Shell {
         return false
     }
 
+    /// Read the first non-empty file from a list of candidate paths (background thread).
+    /// Calls `onFound` on the main thread with the content.
+    static func readFirstExisting(_ paths: [String], onFound: @escaping (String) -> Void) {
+        DispatchQueue.global(qos: .utility).async {
+            for path in paths {
+                if let content = try? String(contentsOfFile: path, encoding: .utf8), !content.isEmpty {
+                    DispatchQueue.main.async { onFound(content) }
+                    return
+                }
+            }
+        }
+    }
+
+    /// Parse JSONL lines, splitting on newlines and buffering partials.
+    /// Returns parsed JSON dictionaries and updates the partial line buffer.
+    static func parseJSONLines(text: String, partialLine: inout String) -> [[String: Any]] {
+        let fullText = partialLine + text
+        var lines = fullText.components(separatedBy: "\n")
+        partialLine = fullText.hasSuffix("\n") || lines.isEmpty ? "" : lines.removeLast()
+        return lines.compactMap { line in
+            guard !line.isEmpty,
+                  let data = line.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+            return json
+        }
+    }
+
     /// Read incremental data from a file starting at `offset`.
     /// Returns the decoded text and the new file offset, or nil on failure.
     static func readTail(path: String, from offset: UInt64) -> (text: String, newOffset: UInt64)? {

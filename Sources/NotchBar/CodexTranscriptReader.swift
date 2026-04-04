@@ -30,21 +30,10 @@ final class CodexTranscriptReader: LiveTranscriptReader {
         lastOffset = result.newOffset
         let text = result.text
 
-        var lines = (partialLine + text).components(separatedBy: "\n")
-        if !(partialLine + text).hasSuffix("\n"), !lines.isEmpty {
-            partialLine = lines.removeLast()
-        } else {
-            partialLine = ""
-        }
-
         var entries: [TranscriptEntry] = []
+        let jsonLines = Shell.parseJSONLines(text: text, partialLine: &partialLine)
 
-        for line in lines where !line.isEmpty {
-            guard let lineData = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] else {
-                continue
-            }
-
+        for json in jsonLines {
             let type = json["type"] as? String ?? ""
             let payload = json["payload"] as? [String: Any] ?? [:]
 
@@ -192,15 +181,7 @@ final class CodexTranscriptReader: LiveTranscriptReader {
             entries.append(.taskStarted(task))
             if (payload["status"] as? String) == "completed" {
                 completedCallIDs.insert(callID)
-                entries.append(.taskCompleted(TranscriptTaskEvent(
-                    id: callID,
-                    title: task.title,
-                    detail: task.detail,
-                    toolName: task.toolName,
-                    filePath: task.filePath,
-                    bashCommand: task.bashCommand,
-                    isWriteOperation: task.isWriteOperation
-                )))
+                entries.append(.taskCompleted(task))
             }
         case "custom_tool_call_output":
             guard let callID = payload["call_id"] as? String else { return }

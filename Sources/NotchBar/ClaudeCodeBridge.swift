@@ -119,16 +119,12 @@ class ClaudeCodeBridge: AgentProviderController {
     }
 
     func start() {
-        log.info("Bridge initializing...")
-        log.info("Events dir: \(self.eventsDir.path)")
-        log.info("Responses dir: \(self.responsesDir.path)")
-        log.info("Bin dir: \(self.binDir.path)")
+        log.info("Bridge initializing at \(self.eventsDir.deletingLastPathComponent().path)")
         let fm = FileManager.default
         try? fm.createDirectory(at: eventsDir, withIntermediateDirectories: true)
         try? fm.createDirectory(at: responsesDir, withIntermediateDirectories: true)
         try? fm.createDirectory(at: binDir, withIntermediateDirectories: true)
         writeHookScript()
-        log.info("Hook script written")
         requestNotificationPermission()
 
         dirFD = open(eventsDir.path, O_EVTONLY)
@@ -254,20 +250,10 @@ class ClaudeCodeBridge: AgentProviderController {
     // MARK: - CLAUDE.md Reader
 
     func readClaudeMd(for session: AgentSession) {
-        DispatchQueue.global(qos: .utility).async {
-            let paths = [
-                session.projectPath + "/CLAUDE.md",
-                session.projectPath + "/.claude/CLAUDE.md"
-            ]
-            for path in paths {
-                if let content = try? String(contentsOfFile: path, encoding: .utf8), !content.isEmpty {
-                    DispatchQueue.main.async {
-                        session.instructionsContent = content
-                    }
-                    return
-                }
-            }
-        }
+        Shell.readFirstExisting([
+            session.projectPath + "/CLAUDE.md",
+            session.projectPath + "/.claude/CLAUDE.md"
+        ]) { session.instructionsContent = $0 }
     }
 
     // MARK: - Git Status Polling
@@ -313,6 +299,9 @@ class ClaudeCodeBridge: AgentProviderController {
             handleEvent(event)
             try? fm.removeItem(at: file)
         }
+
+        // Prevent unbounded growth — events are already deleted from disk
+        if handledEvents.count > 500 { handledEvents.removeAll() }
     }
 
     // MARK: - Handle Event
@@ -360,8 +349,6 @@ class ClaudeCodeBridge: AgentProviderController {
             let toolName = event.toolName ?? "Tool"
             let settings = AppSettings.shared
 
-            if session.tasks.count >= 10 { session.tasks.removeFirst() }
-
             // Check if this tool needs approval
             let needsApproval = !settings.shouldAutoApprove(toolName: toolName)
 
@@ -377,7 +364,7 @@ class ClaudeCodeBridge: AgentProviderController {
                     isWriteOperation: event.isWriteOperation
                 )
                 session.pendingApproval = approval
-                session.tasks.append(TaskItem(title: desc, status: .pendingApproval, toolName: toolName, filePath: event.filePath))
+                session.appendTask(TaskItem(title: desc, status: .pendingApproval, toolName: toolName, filePath: event.filePath))
                 session.statusMessage = "Awaiting approval: \(desc)"
 
                 // Auto-expand the panel
@@ -401,7 +388,7 @@ class ClaudeCodeBridge: AgentProviderController {
                 }
             } else {
                 log.info("Tool '\(toolName)' auto-approved by settings (request: \(toolUseId))")
-                session.tasks.append(TaskItem(title: desc, status: .running, toolName: toolName, filePath: event.filePath))
+                session.appendTask(TaskItem(title: desc, status: .running, toolName: toolName, filePath: event.filePath))
                 session.statusMessage = desc
                 // Write immediate approve response so hook script unblocks
                 writeApprovalResponse(requestId: toolUseId, decision: "approve")
@@ -429,8 +416,7 @@ class ClaudeCodeBridge: AgentProviderController {
                 session.tasks[idx].status = .completed
                 session.tasks[idx].detail = detail
             } else {
-                if session.tasks.count >= 10 { session.tasks.removeFirst() }
-                session.tasks.append(TaskItem(title: desc, status: .completed, detail: detail, toolName: event.toolName, filePath: event.filePath))
+                session.appendTask(TaskItem(title: desc, status: .completed, detail: detail, toolName: event.toolName, filePath: event.filePath))
             }
 
             // Clear pending approval if this was it
@@ -455,26 +441,16 @@ class ClaudeCodeBridge: AgentProviderController {
     // MARK: - Approval Actions
 
     func approveAction(requestId: String, sessionId: UUID) {
-        log.info("Approving request \(requestId)")
-        writeApprovalResponse(requestId: requestId, decision: "approve")
-        approvalTimers[requestId]?.invalidate()
-        approvalTimers.removeValue(forKey: requestId)
-
-        if let session = state.sessions.first(where: { $0.id == sessionId }) {
-            if session.pendingApproval?.requestId == requestId {
-                session.pendingApproval = nil
-                if let idx = session.tasks.lastIndex(where: { $0.status == .pendingApproval }) {
-                    session.tasks[idx].status = .running
-                }
-                session.statusMessage = "Approved"
-            }
-            state.objectWillChange.send()
-        }
+        resolveApproval(requestId: requestId, sessionId: sessionId, decision: "approve", newStatus: .running)
     }
 
     func rejectAction(requestId: String, sessionId: UUID) {
-        log.info("Rejecting request \(requestId)")
-        writeApprovalResponse(requestId: requestId, decision: "deny", reason: "User rejected from NotchBar")
+        resolveApproval(requestId: requestId, sessionId: sessionId, decision: "deny", reason: "User rejected from NotchBar", newStatus: .rejected)
+    }
+
+    private func resolveApproval(requestId: String, sessionId: UUID, decision: String, reason: String? = nil, newStatus: TaskItem.TaskStatus) {
+        log.info("\(decision.capitalized) request \(requestId)")
+        writeApprovalResponse(requestId: requestId, decision: decision, reason: reason)
         approvalTimers[requestId]?.invalidate()
         approvalTimers.removeValue(forKey: requestId)
 
@@ -482,9 +458,9 @@ class ClaudeCodeBridge: AgentProviderController {
             if session.pendingApproval?.requestId == requestId {
                 session.pendingApproval = nil
                 if let idx = session.tasks.lastIndex(where: { $0.status == .pendingApproval }) {
-                    session.tasks[idx].status = .rejected
+                    session.tasks[idx].status = newStatus
                 }
-                session.statusMessage = "Rejected"
+                session.statusMessage = decision == "approve" ? "Approved" : "Rejected"
             }
             state.objectWillChange.send()
         }
@@ -626,8 +602,7 @@ class ClaudeCodeBridge: AgentProviderController {
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 guard let session = self?.state.activeSession else { return }
-                if session.tasks.count >= 10 { session.tasks.removeFirst() }
-                session.tasks.append(TaskItem(title: "You: \(String(message.prefix(50)))", status: .completed))
+                session.appendTask(TaskItem(title: "You: \(String(message.prefix(50)))", status: .completed))
                 self?.state.objectWillChange.send()
             }
         }

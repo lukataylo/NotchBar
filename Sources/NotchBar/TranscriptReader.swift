@@ -30,27 +30,9 @@ class TranscriptReader: LiveTranscriptReader {
         let text = result.text
 
         var entries: [TranscriptEntry] = []
-        let fullText = partialLine + text
-        var lines = fullText.components(separatedBy: "\n")
+        let jsonLines = Shell.parseJSONLines(text: text, partialLine: &partialLine)
 
-        // If the text doesn't end with a newline, the last "line" may be partial
-        // Save it for the next read
-        if !fullText.hasSuffix("\n") && !lines.isEmpty {
-            partialLine = lines.removeLast()
-        } else {
-            partialLine = ""
-        }
-
-        for line in lines where !line.isEmpty {
-            guard let lineData = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] else {
-                // Only log if the line looks like it should be JSON (starts with {)
-                if line.hasPrefix("{") {
-                    log.debug("Skipping unparseable JSON line (\(line.count) chars)")
-                }
-                continue
-            }
-
+        for json in jsonLines {
             let type = json["type"] as? String ?? ""
             guard let message = json["message"] as? [String: Any] else { continue }
 
