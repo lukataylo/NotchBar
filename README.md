@@ -112,10 +112,12 @@ See [INSTALL.md](INSTALL.md).
 
 ### Claude Code — full live integration
 
-- Hook-driven real-time tool events and approval cards via `~/.claude/settings.json`
+- Unix domain socket IPC for near-instant tool events and approval cards (~9ms round-trip)
+- Hooks installed in `~/.claude/settings.json`, socket server at `~/.notchbar/notchbar.sock`
 - Approve/reject directly from the notch (no terminal context switch)
+- Reply to Claude from the notch without switching to Terminal
 - Session history and resume from `~/.claude/projects/`
-- Reasoning summaries, token tracking, cost estimation
+- Reasoning summaries, token tracking, optional cost estimation (for API key users)
 
 ### Codex — monitored sessions
 
@@ -140,7 +142,8 @@ See [INSTALL.md](INSTALL.md).
 ├──────────────────────┬──────────────────────────────┤
 │   Claude Provider    │      Codex Provider           │
 │  ClaudeCodeBridge    │  CodexProvider                │
-│  TranscriptReader    │  CodexTranscriptReader        │
+│  SocketServer        │  CodexTranscriptReader        │
+│  TranscriptReader    │                               │
 │  SessionHistory      │                               │
 ├──────────────────────┴──────────────────────────────┤
 │                  Shared Utilities                     │
@@ -155,7 +158,16 @@ Three layers, zero provider-specific conditionals in the UI:
 2. **Provider-neutral state** — shared session models, capability flags, action routing
 3. **Provider implementations** — discovery, transcript parsing, approvals, integration install
 
-Each provider declares capabilities (`liveApprovals`, `liveReasoning`, `sessionHistory`, `sendInput`, `resume`, `integrationInstall`) and the UI degrades gracefully based on what's available.
+Each provider declares capabilities (`liveApprovals`, `liveReasoning`, `sessionHistory`, `integrationInstall`) and the UI degrades gracefully based on what's available.
+
+### Hook IPC (Claude Code)
+
+```
+Claude Code → hook script (bash) → nc -U notchbar.sock → NotchBar
+                                  ← JSON response ←
+```
+
+The hook script is 15 lines of bash. It connects to NotchBar's Unix domain socket, sends the tool event, and receives the approval decision. If NotchBar isn't running, the connection fails instantly and the hook auto-approves. No file polling, no process scanning, ~9ms round-trip.
 
 ## Project Structure
 
@@ -173,7 +185,8 @@ Sources/NotchBar/
 ├── Models.swift                # AgentSession, TaskItem, NotchState, pricing
 ├── ProviderCore.swift          # protocols, capabilities, provider catalog
 ├── ProviderManager.swift       # provider routing and lifecycle
-├── ClaudeCodeBridge.swift      # Claude hooks, events, approvals
+├── ClaudeCodeBridge.swift      # Claude hooks, socket events, approvals
+├── SocketServer.swift          # Unix domain socket IPC server
 ├── CodexProvider.swift         # Codex process discovery + monitoring
 ├── TranscriptReader.swift      # Claude transcript (.jsonl) parser
 ├── CodexTranscriptReader.swift # Codex transcript (.jsonl) parser
@@ -221,10 +234,11 @@ Issues and PRs welcome at [github.com/lukataylo/NotchBar](https://github.com/luk
 
 ## Stability Notes
 
-- The app now includes runtime exception logging in `~/Library/Logs/NotchBar/runtime.log`
-- Claude hook generation correctly targets the renamed `NotchBar` process
-- Update checks now point at the correct `NotchBar` GitHub repository
-- The app bundle now declares Apple Events usage for Terminal/iTerm automation flows
+- Socket-based IPC replaces file-based polling — 9ms latency, no DispatchSource races
+- macOS automatic termination disabled — NotchBar stays alive in the background
+- Hook script auto-approves if NotchBar is unreachable (fail-open, never blocks Claude)
+- Ghost session filtering: only real project directories under `/Users/` create sessions
+- Cost tracking off by default (most users are on Max/Pro plans)
 
 ## License
 
