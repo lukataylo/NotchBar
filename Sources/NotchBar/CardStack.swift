@@ -171,7 +171,7 @@ struct SessionCardExpanded: View {
             // Approval hints or message input
             if session.pendingApproval != nil {
                 approvalHints
-            } else if session.isActive && !session.isCompleted {
+            } else if session.isActive && !session.isCompleted && session.terminalAvailable {
                 messageInput
             }
         }
@@ -301,7 +301,9 @@ struct SessionCardExpanded: View {
                 .font(.system(size: 11))
                 .foregroundColor(.white.opacity(0.7))
                 .lineLimit(3)
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12).padding(.vertical, 8)
         .background(Color.white.opacity(0.03))
     }

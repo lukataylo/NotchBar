@@ -34,6 +34,23 @@ enum Shell {
         return String(line.dropFirst())
     }
 
+    /// Walk the parent process chain to check if a PID is running under Terminal.app or iTerm2.
+    static func isRunningInTerminal(pid: Int32) -> Bool {
+        var currentPid = pid
+        for _ in 0..<10 {
+            guard let output = run("/bin/ps", ["-p", String(currentPid), "-o", "ppid=,comm="])?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !output.isEmpty else { return false }
+            let parts = output.split(separator: " ", maxSplits: 1)
+            guard parts.count >= 2 else { return false }
+            let comm = String(parts[1])
+            if comm.contains("Terminal") || comm.contains("iTerm") { return true }
+            guard let ppid = Int32(parts[0].trimmingCharacters(in: .whitespaces)), ppid > 1 else { return false }
+            currentPid = ppid
+        }
+        return false
+    }
+
     /// Read the first non-empty file from a list of candidate paths (background thread).
     /// Calls `onFound` on the main thread with the content.
     static func readFirstExisting(_ paths: [String], onFound: @escaping (String) -> Void) {

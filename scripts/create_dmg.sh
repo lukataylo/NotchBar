@@ -12,14 +12,11 @@ STAGING_DIR="${DIST_DIR}/dmg-staging"
 README_PATH="${STAGING_DIR}/Install NotchBar.txt"
 
 # Code signing + notarization config
-# Set these for distribution builds:
-#   export SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
-#   export APPLE_ID="your@email.com"
-#   export APPLE_TEAM_ID="YOURTEAMID"
-#   export NOTARIZE=1
-SIGN_IDENTITY="${SIGN_IDENTITY:-}"
+# Override with env vars, or set SIGN_IDENTITY="" for unsigned builds.
+# Uses SHA-1 hash to avoid ambiguity when multiple certs exist.
+SIGN_IDENTITY="${SIGN_IDENTITY:-4D77EE9729D712C71A67E3E3657C9A17EC6F6122}"
 APPLE_ID="${APPLE_ID:-}"
-APPLE_TEAM_ID="${APPLE_TEAM_ID:-}"
+APPLE_TEAM_ID="${APPLE_TEAM_ID:-5QC5886P5V}"
 NOTARIZE="${NOTARIZE:-}"
 
 cd "${ROOT_DIR}"

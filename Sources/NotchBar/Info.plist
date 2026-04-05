@@ -20,6 +20,12 @@
     <string>AppIcon</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>NotchBar needs Automation access to Terminal and iTerm so it can resume sessions and send approved input back to local coding agents.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>NotchBar reads project files (CLAUDE.md, AGENTS.md) and git status from your project directories to display session context.</string>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>NotchBar reads project files from your Desktop if you run coding agents there.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>NotchBar reads project files from your Downloads if you run coding agents there.</string>
     <key>LSUIElement</key>
     <true/>
     <key>LSMinimumSystemVersion</key>

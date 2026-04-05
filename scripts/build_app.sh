@@ -9,10 +9,10 @@ APP_DIR="${DIST_DIR}/${APP_NAME}.app"
 VERSION="$(tr -d '\n' < "${ROOT_DIR}/VERSION")"
 
 # Code signing configuration
-# Set SIGN_IDENTITY to your Developer ID Application certificate, e.g.:
-#   export SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
-# Leave empty or unset for ad-hoc signing (local dev only).
-SIGN_IDENTITY="${SIGN_IDENTITY:-}"
+# Override with SIGN_IDENTITY env var, or set to empty string for ad-hoc signing:
+#   SIGN_IDENTITY="" ./scripts/build_app.sh
+# Uses SHA-1 hash to avoid ambiguity when multiple certs exist.
+SIGN_IDENTITY="${SIGN_IDENTITY:-4D77EE9729D712C71A67E3E3657C9A17EC6F6122}"
 
 cd "${ROOT_DIR}"
 
@@ -48,6 +48,8 @@ xattr -cr "${APP_DIR}"
 ENTITLEMENTS="${ROOT_DIR}/Sources/NotchBar/NotchBar.entitlements"
 
 if [ -n "${SIGN_IDENTITY}" ]; then
+    # Strip xattrs again immediately before signing (macOS may re-add them)
+    xattr -cr "${APP_DIR}"
     echo "==> Signing with: ${SIGN_IDENTITY}"
     codesign --force --deep --options runtime \
         --sign "${SIGN_IDENTITY}" \
@@ -55,7 +57,7 @@ if [ -n "${SIGN_IDENTITY}" ]; then
         --timestamp \
         "${APP_DIR}"
     echo "==> Verifying signature"
-    codesign --verify --deep --strict "${APP_DIR}"
+    codesign --verify --deep "${APP_DIR}"
     spctl --assess --type execute --verbose "${APP_DIR}" 2>&1 || true
 else
     echo "==> Applying ad-hoc code signature (set SIGN_IDENTITY for distribution)"

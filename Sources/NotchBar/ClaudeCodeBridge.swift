@@ -204,6 +204,7 @@ class ClaudeCodeBridge: AgentProviderController {
                 session.isActive = true
                 session.statusMessage = "Running"
                 session.pid = s.pid
+                session.terminalAvailable = Shell.isRunningInTerminal(pid: s.pid)
                 self.state.sessions.append(session)
                 self.readClaudeMd(for: session)
             }
@@ -302,6 +303,18 @@ class ClaudeCodeBridge: AgentProviderController {
             let projectName = (cwd as NSString).lastPathComponent
             let s = AgentSession(name: projectName, projectPath: cwd, providerID: .claude)
             s.isActive = true; s.statusMessage = "Connected"
+            // Try to find PID and detect terminal
+            DispatchQueue.global(qos: .utility).async {
+                for pid in Shell.pgrep("claude") {
+                    if Shell.cwd(for: pid) == cwd {
+                        DispatchQueue.main.async {
+                            s.pid = pid
+                            s.terminalAvailable = Shell.isRunningInTerminal(pid: pid)
+                        }
+                        break
+                    }
+                }
+            }
             state.sessions.append(s)
             sessionMap[sessionId] = s.id
             toolCounts[sessionId] = 0

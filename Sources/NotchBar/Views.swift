@@ -97,8 +97,6 @@ struct ExpandedViewV2: View {
                 NotchBarIcon().frame(width: 20, height: 20)
             }.buttonStyle(.plain)
 
-            Text(state.activeSession?.providerDisplayName ?? "NotchBar").font(.system(size: 13, weight: .semibold)).foregroundColor(.white)
-
             Spacer()
 
             if state.sessions.count > 1 {
