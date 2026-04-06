@@ -77,6 +77,14 @@ struct ExpandedViewV2: View {
         state.sessions.first { !$0.pendingApprovals.isEmpty }
     }
 
+    /// Bounds-safe session for the header icon
+    private var headerSession: AgentSession? {
+        guard !state.sessions.isEmpty else { return nil }
+        let idx = state.resolvedExpandedIndex ?? state.mostUrgentIndex
+        guard state.sessions.indices.contains(idx) else { return nil }
+        return state.sessions[idx]
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -134,7 +142,7 @@ struct ExpandedViewV2: View {
         // Small delay so the approval removal is processed first
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             let remaining = state.sessions.reduce(0) { $0 + $1.pendingApprovals.count }
-            if remaining <= 1 { onCollapse() }
+            if remaining == 0 { onCollapse() }
         }
     }
 
@@ -143,7 +151,7 @@ struct ExpandedViewV2: View {
     var headerSection: some View {
         HStack(spacing: 8) {
             Button(action: onCollapse) {
-                ActiveProviderIcon(session: state.sessions.isEmpty ? nil : state.sessions[state.resolvedExpandedIndex ?? state.mostUrgentIndex])
+                ActiveProviderIcon(session: headerSession)
                     .frame(width: 20, height: 20)
             }.buttonStyle(.plain)
 

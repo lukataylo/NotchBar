@@ -195,6 +195,8 @@ struct SessionCardExpanded: View {
                     .font(.matrix(13, weight: .semibold))
                     .foregroundColor(.white)
                     .lineLimit(1)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onCollapse() }
 
                 if nameHovering || session.isPinned {
                     Button { session.isPinned.toggle() } label: {
@@ -205,8 +207,6 @@ struct SessionCardExpanded: View {
                     .buttonStyle(.plain)
                 }
             }
-            .contentShape(Rectangle())
-            .onTapGesture { onCollapse() }
             .onHover { nameHovering = $0 }
 
             if session.isStale {
