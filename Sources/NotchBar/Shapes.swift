@@ -286,17 +286,50 @@ struct MatrixTerminal: Shape {
     }
 }
 
-struct MatrixDots: Shape {
-    /// A 3-dot horizontal grip indicator, matrix style.
+struct MatrixDotsChevronUp: Shape {
+    /// An upward chevron composed of individual dots — Nothing UI / LED matrix style.
+    /// 5 dots arranged in a V-pointing-up pattern:
+    ///       ·          (tip)
+    ///     ·   ·        (mid)
+    ///   ·       ·      (base)
     func path(in rect: CGRect) -> Path {
-        let dotR: CGFloat = min(rect.width, rect.height) * 0.12
-        let cy = rect.midY
-        let spacing = rect.width * 0.28
-        let cx = rect.midX
+        let s = min(rect.width, rect.height)
+        let dotR = s * 0.08
+        let cx = rect.midX, cy = rect.midY
+        let hw = s * 0.34   // half-width of base
+        let hh = s * 0.22   // half-height of chevron
+
         var p = Path()
-        p.addEllipse(in: CGRect(x: cx - spacing - dotR, y: cy - dotR, width: dotR * 2, height: dotR * 2))
-        p.addEllipse(in: CGRect(x: cx - dotR, y: cy - dotR, width: dotR * 2, height: dotR * 2))
-        p.addEllipse(in: CGRect(x: cx + spacing - dotR, y: cy - dotR, width: dotR * 2, height: dotR * 2))
+        // Tip (top center)
+        p.addEllipse(in: CGRect(x: cx - dotR, y: cy - hh - dotR, width: dotR * 2, height: dotR * 2))
+        // Mid left & right
+        p.addEllipse(in: CGRect(x: cx - hw * 0.55 - dotR, y: cy - dotR, width: dotR * 2, height: dotR * 2))
+        p.addEllipse(in: CGRect(x: cx + hw * 0.55 - dotR, y: cy - dotR, width: dotR * 2, height: dotR * 2))
+        // Base left & right
+        p.addEllipse(in: CGRect(x: cx - hw - dotR, y: cy + hh - dotR, width: dotR * 2, height: dotR * 2))
+        p.addEllipse(in: CGRect(x: cx + hw - dotR, y: cy + hh - dotR, width: dotR * 2, height: dotR * 2))
+        return p
+    }
+}
+
+struct MatrixDotsChevronDown: Shape {
+    /// A downward chevron composed of individual dots — Nothing UI style.
+    func path(in rect: CGRect) -> Path {
+        let s = min(rect.width, rect.height)
+        let dotR = s * 0.08
+        let cx = rect.midX, cy = rect.midY
+        let hw = s * 0.34
+        let hh = s * 0.22
+
+        var p = Path()
+        // Base left & right (top)
+        p.addEllipse(in: CGRect(x: cx - hw - dotR, y: cy - hh - dotR, width: dotR * 2, height: dotR * 2))
+        p.addEllipse(in: CGRect(x: cx + hw - dotR, y: cy - hh - dotR, width: dotR * 2, height: dotR * 2))
+        // Mid left & right
+        p.addEllipse(in: CGRect(x: cx - hw * 0.55 - dotR, y: cy - dotR, width: dotR * 2, height: dotR * 2))
+        p.addEllipse(in: CGRect(x: cx + hw * 0.55 - dotR, y: cy - dotR, width: dotR * 2, height: dotR * 2))
+        // Tip (bottom center)
+        p.addEllipse(in: CGRect(x: cx - dotR, y: cy + hh - dotR, width: dotR * 2, height: dotR * 2))
         return p
     }
 }

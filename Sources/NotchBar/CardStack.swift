@@ -235,9 +235,9 @@ struct SessionCardExpanded: View {
 
             if state.sessions.count > 1 {
                 Button(action: onCollapse) {
-                    MatrixChevronDown()
-                        .stroke(.white.opacity(0.4), lineWidth: 1.5)
-                        .frame(width: 14, height: 14)
+                    MatrixDotsChevronDown()
+                        .fill(.white.opacity(0.4))
+                        .frame(width: 16, height: 16)
                         .frame(width: 24, height: 24)
                         .contentShape(Rectangle())
                 }

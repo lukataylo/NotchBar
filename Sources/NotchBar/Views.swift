@@ -158,9 +158,9 @@ struct ExpandedViewV2: View {
             NewSessionHeaderButton()
 
             Button(action: onCollapse) {
-                MatrixDots()
+                MatrixDotsChevronUp()
                     .fill(.white.opacity(0.4))
-                    .frame(width: 20, height: 14)
+                    .frame(width: 18, height: 18)
                     .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
             }.buttonStyle(.plain)
