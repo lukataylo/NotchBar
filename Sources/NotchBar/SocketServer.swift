@@ -13,6 +13,10 @@ class SocketServer {
     private let queue = DispatchQueue(label: "com.notchbar.socket", qos: .userInteractive)
     private var onEvent: ((ClaudeCodeEvent, String, @escaping (String) -> Void) -> Void)?
 
+    /// Limit concurrent connections to prevent resource exhaustion from misbehaving clients.
+    private let maxConcurrentConnections = 32
+    private let connectionSemaphore = DispatchSemaphore(value: 32)
+
     init() {
         let base = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".notchbar")
         socketPath = base.appendingPathComponent("notchbar.sock").path
@@ -118,8 +122,11 @@ class SocketServer {
                 continue
             }
 
-            // Handle each connection on a concurrent thread for parallelism
+            // Handle each connection on a concurrent thread for parallelism.
+            // Semaphore limits concurrent connections to prevent resource exhaustion.
+            connectionSemaphore.wait()
             DispatchQueue.global(qos: .userInteractive).async { [weak self] in
+                defer { self?.connectionSemaphore.signal() }
                 self?.handleConnection(fd: clientFD)
             }
         }
@@ -202,10 +209,12 @@ class SocketServer {
             }
         }
 
-        // Send response (safe — either callback or timeout wrote it under lock)
+        // Send response — capture final value under lock for full atomicity
+        let finalResponse: String
         lock.lock()
-        let line = responseJSON + "\n"
+        finalResponse = responseJSON
         lock.unlock()
+        let line = finalResponse + "\n"
         _ = line.withCString { ptr in
             write(fd, ptr, line.utf8.count)
         }

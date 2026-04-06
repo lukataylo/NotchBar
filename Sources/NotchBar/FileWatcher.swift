@@ -18,6 +18,10 @@ class FileWatcher {
     private var recentToolWrites: [String: Date] = [:]
     private let recentWriteWindow: TimeInterval = 5.0
 
+    /// Guards `recentToolWrites` and `lastModDates` which are accessed from
+    /// the main thread (recordAgentWrite) and a background thread (checkLockedFiles).
+    private let dataLock = NSLock()
+
     init(coordination: CoordinationEngine) {
         self.coordination = coordination
     }
@@ -39,15 +43,22 @@ class FileWatcher {
     /// Record that a known agent just wrote to a file (suppresses false-positive conflicts).
     func recordAgentWrite(_ filePath: String) {
         let normalized = (filePath as NSString).standardizingPath
+        dataLock.lock()
         recentToolWrites[normalized] = Date()
+        dataLock.unlock()
     }
 
     private func checkLockedFiles() {
-        let locks = coordination.activeLocks
+        // Snapshot locks under the coordination engine's lock to avoid
+        // iterating a dictionary that could be mutated on another thread.
+        let locks = coordination.snapshotActiveLocks()
 
-        // Clean up stale recent-write entries
+        // Clean up stale recent-write entries and take a snapshot
         let now = Date()
+        dataLock.lock()
         recentToolWrites = recentToolWrites.filter { now.timeIntervalSince($0.value) < recentWriteWindow }
+        let recentWrites = recentToolWrites
+        dataLock.unlock()
 
         for (path, fileLock) in locks {
             guard !fileLock.isStale else { continue }
@@ -58,8 +69,10 @@ class FileWatcher {
                 continue
             }
 
+            dataLock.lock()
             let lastKnown = lastModDates[path]
             lastModDates[path] = modDate
+            dataLock.unlock()
 
             // First time seeing this file — just record the date
             guard let last = lastKnown else { continue }
@@ -67,7 +80,7 @@ class FileWatcher {
             // File was modified since last check
             if modDate > last {
                 // Skip if the lock owner's agent just wrote to it
-                if let recentWrite = recentToolWrites[path], now.timeIntervalSince(recentWrite) < recentWriteWindow {
+                if let recentWrite = recentWrites[path], now.timeIntervalSince(recentWrite) < recentWriteWindow {
                     continue
                 }
 
@@ -85,7 +98,9 @@ class FileWatcher {
 
         // Clean up entries for files that are no longer locked
         let lockedPaths = Set(locks.keys)
+        dataLock.lock()
         lastModDates = lastModDates.filter { lockedPaths.contains($0.key) }
+        dataLock.unlock()
     }
 
     /// Try to identify what app modified the file by checking the frontmost application.

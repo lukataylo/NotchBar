@@ -132,7 +132,8 @@ class ConflictDetectorProvider: AgentProviderController {
     // MARK: - MCP State File (read by the Python MCP server)
 
     private func writeMCPState() {
-        let locks = coordination.activeLocks.values.map { lock in
+        let lockSnapshot = coordination.snapshotActiveLocks()
+        let locks = lockSnapshot.values.map { lock in
             [
                 "file_path": lock.filePath,
                 "agent_type": lock.agentType,
@@ -159,7 +160,7 @@ class ConflictDetectorProvider: AgentProviderController {
             "stats": [
                 "conflicts_prevented": coordination.stats.conflictsPrevented,
                 "files_coordinated": coordination.stats.filesCoordinated,
-                "active_locks": coordination.activeLocks.count,
+                "active_locks": lockSnapshot.count,
             ],
         ]
 

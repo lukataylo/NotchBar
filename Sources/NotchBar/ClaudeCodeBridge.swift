@@ -78,8 +78,19 @@ class ClaudeCodeBridge: AgentProviderController {
 
     func start() {
         log.info("Bridge initializing")
-        try? FileManager.default.createDirectory(at: binDir, withIntermediateDirectories: true)
-        writeHookScript()
+        do {
+            try FileManager.default.createDirectory(at: binDir, withIntermediateDirectories: true)
+        } catch {
+            log.error("Failed to create bin directory at \(self.binDir.path): \(error.localizedDescription)")
+            DispatchQueue.main.async { [weak self] in
+                self?.state.sessions.first?.statusMessage = "Setup error: cannot create ~/.notchbar/bin"
+                self?.state.objectWillChange.send()
+            }
+        }
+        if !writeHookScript() {
+            log.error("Hook script write failed — approvals will auto-approve (NotchBar cannot intercept tool calls)")
+            sendNotification(title: "NotchBar Setup Error", body: "Failed to write hook script. Approvals won't work until this is fixed. Check ~/.notchbar/bin permissions.")
+        }
         requestNotificationPermission()
 
         // Socket server for IPC with hook scripts

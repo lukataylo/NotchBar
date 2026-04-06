@@ -273,6 +273,14 @@ class CoordinationEngine: ObservableObject {
         log.info("Loaded \(loadedCount) file locks from disk")
     }
 
+    /// Thread-safe snapshot of all active locks for iteration from background threads.
+    /// Callers get a copy — mutations to the returned dictionary do not affect engine state.
+    func snapshotActiveLocks() -> [String: FileLock] {
+        lock.lock()
+        defer { lock.unlock() }
+        return activeLocks
+    }
+
     /// Get lock info for a file, if any.
     func lockInfo(for filePath: String) -> FileLock? {
         lock.lock()
