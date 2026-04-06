@@ -9,8 +9,8 @@
                     └────────────────┬───────────────────┘
                                      │
                     ┌────────────────┴───────────────────┐
-                    │  ● Claude  thinking...     62%  $0.41 │
-                    │  ○ Codex   Edit main.ts    38%  $0.12 │
+                    │  ● Claude  thinking...        62%    │
+                    │    ┌ Deny ┐  ┌ Allow ┐               │
                     └───────────────────────────────────────┘
 ```
 
@@ -34,22 +34,19 @@ NotchBar turns the dead space around your MacBook notch into a live control surf
 
 | Plugin | Status | What it does |
 |--------|--------|-------------|
-| **Embedded Terminal** | Beta | Launch Claude Code sessions directly inside the notch panel with a full PTY terminal |
 | **Claude Code** | Stable | Live approvals, socket IPC, tool timeline, reasoning, session history |
-| **Codex** | Beta | Process discovery, transcript monitoring, managed profile |
-| **Cursor** | Beta | Workspace detection, process monitoring, git status |
-| **Build Monitor** | Beta | Detects cargo, swift, npm, go, make builds |
-| **Test Runner** | Beta | Detects jest, pytest, cargo test, swift test |
+| **Embedded Terminal** | Beta | Launch Claude Code sessions directly inside the notch panel with a full PTY terminal |
 | **Conflict Detector** | Beta | Multi-agent file locking with MCP coordination server |
+| **Codex** | Beta | Process discovery, transcript monitoring, managed profile (disabled by default) |
 
 ## Key Features
 
 - **Embedded terminal** — launch Claude Code directly in the notch with a built-in PTY terminal
-- **Approval doorbell** — full approval overlay with file preview, diffs, and 4-level actions (Deny / Allow Once / Allow All / Bypass)
+- **Approval doorbell** — full approval overlay with file preview, diffs, and clean Deny/Allow buttons (advanced options via disclosure chevron)
 - **Conflict detection** — file locking across agents with an MCP server for proactive coordination
-- **Multi-session cards** — run Claude, Codex, and Cursor side by side
-- **Live tool timeline** — every tool invocation with status, elapsed time, and inline diffs
-- **Token & cost tracking** — per-model cost estimation with context window usage ring
+- **Multi-session cards** — run multiple agents side by side
+- **Live tool timeline** — every tool invocation with status, elapsed time, and inline diffs (opt-in)
+- **Token & cost tracking** — per-model cost estimation with context window usage ring (opt-in)
 - **Git awareness** — branch name, changed file count per session
 - **Hotkeys** — approve/reject from anywhere without switching windows
 - **Warp, iTerm2, Terminal.app** — works with all major terminal emulators
@@ -89,10 +86,10 @@ Requires macOS 13+ and Xcode Command Line Tools.
 ├─────────────────────────────────────────────────────────────┤
 │                     Plugin System                            │
 │  ProviderCore · PluginRegistry · ProviderManager             │
-├────────┬────────┬────────┬────────┬────────┬────────┬───────┤
-│Embedded│ Claude │ Codex  │ Cursor │ Build  │  Test  │Conflict│
-│Terminal│  Code  │        │        │Monitor │ Runner │Detector│
-├────────┴────────┴────────┴────────┴────────┴────────┴───────┤
+├────────┬────────┬────────┬─────────────────────────────────┤
+│Embedded│ Claude │ Codex  │ Conflict Detector               │
+│Terminal│  Code  │        │                                 │
+├────────┴────────┴────────┴─────────────────────────────────┤
 │                    Shared Services                            │
 │  Shell · HookManager · SocketServer · CoordinationEngine     │
 │  GitIntegration · TranscriptReader · PTYSessionManager       │

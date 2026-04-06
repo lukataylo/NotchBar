@@ -16,14 +16,13 @@ The plugin system is live on the `plugin-architecture` branch. This document tra
 
 ### Plugins (Done)
 - **Claude Code** (stable) — hook IPC, live approvals, transcript parsing, session history
-- **Codex** (beta) — process discovery, transcript monitoring, managed profile install
-- **Cursor** (beta) — workspace detection, process monitoring
-- **Build Monitor** (beta) — detects cargo, swift, npm, go, make builds
-- **Test Runner** (beta) — detects jest, pytest, cargo test, swift test, go test
+- **Embedded Terminal** (beta) — launch Claude Code sessions with built-in PTY terminal
+- **Codex** (beta, disabled by default) — process discovery, transcript monitoring, managed profile install
+- **Conflict Detector** (beta) — multi-agent file locking with MCP coordination server
 
 ### Approval Doorbell (Done)
 - Full-panel overlay with file preview, edit diffs, command preview
-- Four approval levels: Deny, Allow Once, Allow All, Bypass
+- Clean Deny/Allow primary buttons with disclosure chevron for advanced options (Allow All, Auto-approve Session)
 - Approval queue for multiple pending approvals
 - Management tool category auto-approval
 
@@ -33,7 +32,7 @@ The plugin system is live on the `plugin-architecture` branch. This document tra
 | Plugin | Difficulty | Notes |
 |--------|-----------|-------|
 | Aider | Easy | Tail `.aider.chat.history.md`, process monitor pattern |
-| Windsurf/Cascade | Easy | Electron app, similar to Cursor plugin |
+| Windsurf/Cascade | Easy | Electron app, process monitor pattern |
 | GitHub Copilot Chat | Medium | VS Code extension logs |
 | CI Status | Medium | Poll `gh run list --json`, augment existing sessions |
 | Deploy Tracker | Medium | Vercel/Railway/Fly API polling |

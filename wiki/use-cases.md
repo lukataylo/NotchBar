@@ -37,17 +37,15 @@ A breakdown of how NotchBar fits into real-world AI-assisted development workflo
 
 ---
 
-## 3. Claude Code + Codex Side-by-Side
+## 3. Multi-Provider Agents
 
-**Scenario:** You use Claude Code for interactive coding tasks and OpenAI Codex for batch/sandboxed operations. Both are running simultaneously on different parts of the codebase.
-
-**Without NotchBar:** Two completely separate tools with different UIs and no unified view. You check each terminal independently.
+**Scenario:** You use Claude Code alongside other agents. The plugin system supports multiple providers simultaneously.
 
 **With NotchBar:**
-- Both providers appear as cards in the same panel — provider icon distinguishes them (sparkles vs terminal)
-- Claude sessions show full approval controls; Codex sessions show monitoring-only (timeline, reasoning, tokens)
-- The UI gracefully adapts based on each provider's capabilities — no fake controls for things Codex doesn't support
+- Each provider appears as a separate card in the same panel — provider icon distinguishes them
+- The UI gracefully adapts based on each provider's capabilities — no fake controls for unsupported features
 - Unified git status bar shows the shared repo state regardless of which agent is active
+- Enable additional providers (like Codex) in Settings > Plugins as needed
 
 **Key value:** One dashboard for all your AI agents, regardless of provider.
 

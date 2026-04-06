@@ -41,7 +41,7 @@ cat .claude/commands/create-plugin.md
 
 | Pattern | Effort | Best for | Example |
 |---------|--------|----------|---------|
-| Process monitor | ~80 lines | CLI tools, builds, tests | `BuildMonitorProvider.swift` |
+| Process monitor | ~80 lines | CLI tools, builds, tests | Start from the plugin template |
 | Transcript monitor | ~150 lines | AI assistants with log files | `CodexProvider.swift` |
 | Hook IPC | ~300 lines | Deep integration with approval flow | `ClaudeCodeBridge.swift` |
 
@@ -58,7 +58,7 @@ Each plugin lives in a single file. Pick one and make it better:
 
 ### 3. Fix a bug or improve the UI
 
-The codebase is ~5k lines of Swift. No external dependencies. You can read the whole thing in an afternoon.
+The codebase is compact Swift with one external dependency (SwiftTerm). You can read the whole thing in an afternoon.
 
 ## Development Setup
 
@@ -99,17 +99,20 @@ Sources/NotchBar/
 ├── ProviderCore.swift          # Plugin protocol + registry
 ├── ProviderManager.swift       # Plugin lifecycle + action routing
 ├── ClaudeCodeBridge.swift      # Claude Code plugin (stable)
-├── CodexProvider.swift         # Codex plugin (beta)
-├── CursorProvider.swift        # Cursor plugin (beta)
-├── BuildMonitorProvider.swift  # Build monitor plugin (beta)
-├── TestRunnerProvider.swift    # Test runner plugin (beta)
+├── CodexProvider.swift         # Codex plugin (beta, disabled by default)
+├── EmbeddedTerminalProvider.swift # Embedded terminal plugin (beta)
+├── ConflictDetectorProvider.swift # Conflict detector plugin (beta)
 ├── SocketServer.swift          # Unix domain socket IPC
 ├── TranscriptReader.swift      # Claude transcript parser
 ├── CodexTranscriptReader.swift # Codex transcript parser
 ├── Shell.swift                 # Process utilities
 ├── GitIntegration.swift        # Git status/diff
 ├── TerminalHelper.swift        # Terminal.app / iTerm2 bridge
+├── CoordinationEngine.swift    # Multi-agent file lock coordination
+├── FileWatcher.swift           # External file modification detection
+├── PTYSessionManager.swift     # Pseudo-terminal lifecycle
 ├── SessionHistory.swift        # Past session scanning
+├── FontManager.swift           # Custom font loading
 └── UpdateChecker.swift         # GitHub release polling
 ```
 

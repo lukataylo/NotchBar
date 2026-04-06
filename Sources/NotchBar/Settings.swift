@@ -21,8 +21,8 @@ class AppSettings: ObservableObject {
 
     // Card sections
     @AppStorage("showSessionBadges") var showSessionBadges: Bool = true
-    @AppStorage("showTimeline") var showTimeline: Bool = true
-    @AppStorage("showReasoning") var showReasoning: Bool = true
+    @AppStorage("showTimeline") var showTimeline: Bool = false
+    @AppStorage("showReasoning") var showReasoning: Bool = false
     @AppStorage("showGitStatus") var showGitStatus: Bool = true
     @AppStorage("showDiffs") var showDiffs: Bool = true
     @AppStorage("showMessageInput") var showMessageInput: Bool = true

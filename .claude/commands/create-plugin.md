@@ -114,7 +114,7 @@ providerManager.register(MyPlugin(state: state))
 
 ### Process monitor pattern (simplest)
 
-Best for tools that run as visible processes. See `BuildMonitorProvider.swift` and `TestRunnerProvider.swift`.
+Best for tools that run as visible processes.
 
 1. Timer polls `Shell.pgrep()` every few seconds
 2. New PIDs → create session, track in a `[Int32: TrackedInfo]` dict

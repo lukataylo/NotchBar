@@ -76,9 +76,9 @@ struct OnboardingView: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 featureRow(icon: "eye", text: "See what your agent is doing in real time")
-                featureRow(icon: "checkmark.shield", text: "Handle approvals and escalations without leaving the terminal")
-                featureRow(icon: "dollarsign.circle", text: "Track token usage and costs")
-                featureRow(icon: "rectangle.stack", text: "Manage all sessions from one place")
+                featureRow(icon: "checkmark.shield", text: "Approve or deny tool calls without leaving your editor")
+                featureRow(icon: "rectangle.stack", text: "Manage multiple sessions from one place")
+                featureRow(icon: "display.2", text: "Works on every screen, with or without a notch")
             }
             .padding(.horizontal, 40)
             .padding(.top, 8)
@@ -275,7 +275,7 @@ struct OnboardingView: View {
                 Divider()
 
                 if !selectedProvider.capabilities.liveApprovals {
-                    Text("Codex keeps its own in-terminal approval flow today. These preferences still apply to Claude and future live approval support.")
+                    Text("\(selectedProvider.displayName) uses its own approval flow. These preferences apply to providers with live approvals (like Claude Code).")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }

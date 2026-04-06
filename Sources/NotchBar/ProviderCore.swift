@@ -15,9 +15,6 @@ struct ProviderID: Hashable, Codable, Identifiable, RawRepresentable {
     // Built-in IDs — convenience constants, not a closed set
     static let claude = ProviderID("claude")
     static let codex = ProviderID("codex")
-    static let cursor = ProviderID("cursor")
-    static let builds = ProviderID("builds")
-    static let tests = ProviderID("tests")
     static let embeddedTerminal = ProviderID("embedded-terminal")
     static let conflicts = ProviderID("conflicts")
 }

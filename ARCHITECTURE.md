@@ -18,10 +18,10 @@ NotchBar is a lightweight macOS app that turns the MacBook notch into a live das
 ├─────────────────────────────────────────────────────────────┤
 │                     Plugin System                            │
 │  ProviderCore · PluginRegistry · ProviderManager             │
-├────────┬────────┬────────┬────────┬────────┬────────┬───────┤
-│Embedded│ Claude │ Codex  │ Cursor │ Build  │  Test  │Conflict│
-│Terminal│  Code  │        │        │Monitor │ Runner │Detector│
-├────────┴────────┴────────┴────────┴────────┴────────┴───────┤
+├────────┬────────┬────────┬─────────────────────────────────┤
+│Embedded│ Claude │ Codex  │ Conflict Detector               │
+│Terminal│  Code  │        │                                 │
+├────────┴────────┴────────┴─────────────────────────────────┤
 │                    Shared Services                            │
 │  Shell · HookManager · SocketServer · CoordinationEngine     │
 │  GitIntegration · TranscriptReader · PTYSessionManager       │
@@ -37,7 +37,7 @@ The UI layer. Knows nothing about specific plugins.
 |------|---------------|
 | `Infrastructure.swift` | Window panels, hotkeys, menu bar, app delegate, plugin registration |
 | `Views.swift` | Collapsed bar, expanded view, notch shape, approval routing |
-| `ApprovalOverlay.swift` | Doorbell overlay — file preview, edit diffs, 4-level approval buttons |
+| `ApprovalOverlay.swift` | Doorbell overlay — file preview, edit diffs, Deny/Allow buttons with disclosure chevron |
 | `CardStack.swift` | Session cards (collapsed + expanded), card stack layout |
 | `Timeline.swift` | Task timeline with status nodes and completion markers |
 | `Components.swift` | Progress ring, diff views, dot progress, session state icons |
@@ -62,10 +62,9 @@ Each plugin is a single Swift file implementing `AgentProviderController`.
 | Plugin | File | Pattern |
 |--------|------|---------|
 | Claude Code | `ClaudeCodeBridge.swift` | Hook IPC via Unix socket |
-| Codex | `CodexProvider.swift` | Transcript monitoring |
-| Cursor | `CursorProvider.swift` | Process + workspace discovery |
-| Build Monitor | `BuildMonitorProvider.swift` | Process lifecycle |
-| Test Runner | `TestRunnerProvider.swift` | Process lifecycle |
+| Embedded Terminal | `EmbeddedTerminalProvider.swift` | PTY + SwiftTerm |
+| Codex | `CodexProvider.swift` | Transcript monitoring (disabled by default) |
+| Conflict Detector | `ConflictDetectorProvider.swift` | File watcher + MCP coordination |
 
 ### Shared Utilities
 
@@ -77,7 +76,11 @@ Each plugin is a single Swift file implementing `AgentProviderController`.
 | `CodexTranscriptReader.swift` | Codex transcript (.jsonl) parser |
 | `GitIntegration.swift` | Branch, status, diff parsing |
 | `TerminalHelper.swift` | Terminal.app / iTerm2 AppleScript bridge |
+| `CoordinationEngine.swift` | Multi-agent file lock coordination |
+| `FileWatcher.swift` | External file modification detection |
+| `PTYSessionManager.swift` | Pseudo-terminal lifecycle management |
 | `SessionHistory.swift` | Past session scanning and resume |
+| `FontManager.swift` | Custom font loading from resources |
 | `UpdateChecker.swift` | GitHub release polling |
 
 ## Plugin Contract
@@ -128,15 +131,6 @@ Claude Code hook → bash → nc -U notchbar.sock → SocketServer
 ```
 
 ~9ms round-trip. Fail-open: if NotchBar isn't running, hook auto-approves.
-
-### Process Monitor (Build/Test)
-
-```
-Timer (3s) → Shell.pgrep("cargo") → new PIDs found
-  → Shell.cwd(for: pid) → create AgentSession
-  → Timer (3s) → check if PID still alive
-  → dead → mark session completed
-```
 
 ### Transcript Monitor (Codex)
 

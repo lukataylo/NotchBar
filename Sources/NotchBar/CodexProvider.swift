@@ -25,7 +25,8 @@ final class CodexProvider: AgentProviderController {
             integrationInstall: true
         ),
         description: "Process discovery and transcript monitoring for OpenAI Codex sessions.",
-        stability: .beta
+        stability: .beta,
+        defaultEnabled: false
     )
 
     private let state: NotchState

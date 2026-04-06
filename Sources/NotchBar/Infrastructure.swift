@@ -320,9 +320,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         providerManager.register(EmbeddedTerminalProvider(state: state))
         providerManager.register(ClaudeCodeBridge(state: state))
         providerManager.register(CodexProvider(state: state))
-        providerManager.register(CursorProvider(state: state))
-        providerManager.register(BuildMonitorProvider(state: state))
-        providerManager.register(TestRunnerProvider(state: state))
         providerManager.register(ConflictDetectorProvider(state: state))
 
         providerManager.start()

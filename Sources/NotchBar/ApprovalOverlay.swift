@@ -309,26 +309,77 @@ struct ApprovalOverlay: View {
 
     // MARK: - Action Buttons
 
-    private var actionButtons: some View {
-        HStack(spacing: 8) {
-            actionButton("Deny", color: Color.white.opacity(0.1), textColor: .white.opacity(0.7), action: onDeny)
-            actionButton("Allow Once", color: Color.white.opacity(0.15), textColor: .white, action: onAllowOnce)
-            actionButton("Allow All", color: brandOrange, textColor: .white, action: onAllowAll)
-            actionButton("Bypass", color: Color.red.opacity(0.7), textColor: .white, action: onBypass)
-        }
-    }
+    @State private var showAdvanced = false
 
-    private func actionButton(_ title: String, color: Color, textColor: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.matrix(11, weight: .semibold))
-                .foregroundColor(textColor)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 7)
-                .background(color)
-                .cornerRadius(6)
+    private var actionButtons: some View {
+        VStack(spacing: 6) {
+            // Primary actions: Deny + Allow
+            HStack(spacing: 8) {
+                Button(action: onDeny) {
+                    Text("Deny")
+                        .font(.matrix(11, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.7))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background(Color.white.opacity(0.1))
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+
+                Button(action: onAllowOnce) {
+                    Text("Allow")
+                        .font(.matrix(11, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background(brandOrange)
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Disclosure chevron for advanced options
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { showAdvanced.toggle() }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: showAdvanced ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 8, weight: .bold))
+                    Text("More options")
+                        .font(.matrix(10))
+                }
+                .foregroundColor(.white.opacity(0.3))
+            }
+            .buttonStyle(.plain)
+
+            // Advanced options (revealed)
+            if showAdvanced {
+                HStack(spacing: 8) {
+                    Button(action: onAllowAll) {
+                        Text("Allow All \(approval.toolName)")
+                            .font(.matrix(10, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.6))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(5)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: onBypass) {
+                        Text("Auto-approve Session")
+                            .font(.matrix(10, weight: .semibold))
+                            .foregroundColor(.red.opacity(0.7))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .background(Color.red.opacity(0.08))
+                            .cornerRadius(5)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Footer
