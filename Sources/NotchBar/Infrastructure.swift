@@ -56,6 +56,10 @@ class MultiScreenManager {
 
     init(state: NotchState) { self.state = state }
 
+    deinit {
+        if let monitor = clickMonitor { NSEvent.removeMonitor(monitor) }
+    }
+
     func setup() {
         refreshScreens()
         NotificationCenter.default.addObserver(
@@ -113,15 +117,33 @@ class HotkeyManager {
             ProviderManager.shared?.reject(requestId: approval.requestId, session: session)
         }
 
+        handlerMap.handlers[4] = {
+            guard state.sessions.count > 1 else { return }
+            let next = (state.activeSessionIndex + 1) % state.sessions.count
+            log.info("Hotkey: Cmd+Shift+] (next session \(next))")
+            state.selectCard(next)
+        }
+
+        handlerMap.handlers[5] = {
+            guard state.sessions.count > 1 else { return }
+            let prev = (state.activeSessionIndex - 1 + state.sessions.count) % state.sessions.count
+            log.info("Hotkey: Cmd+Shift+[ (prev session \(prev))")
+            state.selectCard(prev)
+        }
+
         // Register Carbon hotkeys — all use Cmd+Shift to avoid conflicts with standard app shortcuts
         var ref1: EventHotKeyRef?
         var ref2: EventHotKeyRef?
         var ref3: EventHotKeyRef?
+        var ref4: EventHotKeyRef?
+        var ref5: EventHotKeyRef?
         let sig = OSType(0x4E434C44)
         let cmdShift = UInt32(cmdKey | shiftKey)
         RegisterEventHotKey(UInt32(kVK_ANSI_C), cmdShift, EventHotKeyID(signature: sig, id: 1), GetApplicationEventTarget(), 0, &ref1)
         RegisterEventHotKey(UInt32(kVK_ANSI_Y), cmdShift, EventHotKeyID(signature: sig, id: 2), GetApplicationEventTarget(), 0, &ref2)
         RegisterEventHotKey(UInt32(kVK_ANSI_N), cmdShift, EventHotKeyID(signature: sig, id: 3), GetApplicationEventTarget(), 0, &ref3)
+        RegisterEventHotKey(UInt32(kVK_ANSI_RightBracket), cmdShift, EventHotKeyID(signature: sig, id: 4), GetApplicationEventTarget(), 0, &ref4)
+        RegisterEventHotKey(UInt32(kVK_ANSI_LeftBracket), cmdShift, EventHotKeyID(signature: sig, id: 5), GetApplicationEventTarget(), 0, &ref5)
 
         // Single event handler dispatches by hotkey ID
         let mapPtr = Unmanaged.passUnretained(handlerMap).toOpaque()
@@ -140,7 +162,7 @@ class HotkeyManager {
             return noErr
         }, 1, &eventType, mapPtr, nil)
 
-        log.info("Hotkeys registered: Cmd+Shift+C, Cmd+Shift+Y, Cmd+Shift+N")
+        log.info("Hotkeys registered: Cmd+Shift+C/Y/N/[/]")
     }
 }
 
@@ -160,16 +182,12 @@ class StatusItemManager: NSObject {
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            let img = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
-                let path = NSBezierPath()
-                let s = rect.width / 24.0
-                let pts: [(CGFloat, CGFloat)] = [
-                    (3,5),(20.998,5),(20.998,10.949),(24,10.949),(24,14.051),
-                    (21,14.051),(21,17.079),(3,17.079),(3,14.05),(0,14.05),(0,10.95),(3,10.95)
-                ]
-                path.move(to: NSPoint(x: pts[0].0 * s, y: rect.height - pts[0].1 * s))
-                for pt in pts.dropFirst() { path.line(to: NSPoint(x: pt.0 * s, y: rect.height - pt.1 * s)) }
-                path.close(); NSColor.black.setFill(); path.fill()
+            let img = NSImage(size: NSSize(width: 18, height: 18), flipped: true) { rect in
+                guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
+                let owlPath = NotchOwlIcon().path(in: CGRect(origin: .zero, size: rect.size))
+                ctx.addPath(owlPath.cgPath)
+                ctx.setFillColor(NSColor.black.cgColor)
+                ctx.fillPath(using: .evenOdd)
                 return true
             }
             img.isTemplate = true
@@ -213,7 +231,7 @@ class StatusItemManager: NSObject {
         statusItem.menu = menu
     }
 
-    var settingsWindow: NSWindow?
+    weak var settingsWindow: NSWindow?
 
     @objc func toggle() {
         if state.expandedScreenID != nil { state.expandedScreenID = nil }
@@ -223,12 +241,12 @@ class StatusItemManager: NSObject {
         }
     }
     @objc func installHooks() {
-        let provider = ProviderManager.shared?.activeProviderDescriptor(for: state.activeSession) ?? ProviderCatalog.claude
+        guard let provider = ProviderManager.shared?.activeProviderDescriptor(for: state.activeSession) else { return }
         let ok = ProviderManager.shared?.installIntegration(for: state.activeSession) ?? false
         let alert = NSAlert()
         if ok {
             alert.messageText = "Integration Installed"
-            alert.informativeText = successMessage(for: provider)
+            alert.informativeText = "\(provider.displayName) integration installed successfully."
         } else {
             alert.alertStyle = .warning
             alert.messageText = "Integration Problem"
@@ -237,7 +255,7 @@ class StatusItemManager: NSObject {
         alert.runModal()
     }
     @objc func removeHooks() {
-        let provider = ProviderManager.shared?.activeProviderDescriptor(for: state.activeSession) ?? ProviderCatalog.claude
+        guard let provider = ProviderManager.shared?.activeProviderDescriptor(for: state.activeSession) else { return }
         let ok = ProviderManager.shared?.removeIntegration(for: state.activeSession) ?? false
         let alert = NSAlert()
         if ok {
@@ -251,27 +269,24 @@ class StatusItemManager: NSObject {
         alert.runModal()
     }
     @objc func openSettings() {
-        if let w = settingsWindow, w.isVisible { w.makeKeyAndOrderFront(nil); return }
+        if let w = settingsWindow, w.isVisible {
+            NSApp.activate(ignoringOtherApps: true)
+            w.makeKeyAndOrderFront(nil)
+            return
+        }
         let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 540),
             styleMask: [.titled, .closable], backing: .buffered, defer: false
         )
+        w.isReleasedWhenClosed = false
         w.title = "NotchBar Settings"
         w.contentView = NSHostingView(rootView: SettingsView())
         w.center()
+        NSApp.activate(ignoringOtherApps: true)
         w.makeKeyAndOrderFront(nil)
         settingsWindow = w
     }
     @objc func quit() { NSApp.terminate(nil) }
-
-    private func successMessage(for provider: ProviderDescriptor) -> String {
-        switch provider.id {
-        case .claude:
-            return "Claude Code will now stream live hook events and approval requests to NotchBar."
-        case .codex:
-            return "The managed Codex `notchbar` profile is installed. Resume with `codex -p notchbar resume` for the recommended monitored setup."
-        }
-    }
 }
 
 // MARK: - App Delegate
@@ -297,6 +312,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyManager = HotkeyManager(state: state)
         statusItemManager = StatusItemManager(state: state)
         providerManager = ProviderManager(state: state)
+
+        // Register plugins
+        providerManager.register(ClaudeCodeBridge(state: state))
+        providerManager.register(CodexProvider(state: state))
+        providerManager.register(CursorProvider(state: state))
+        providerManager.register(BuildMonitorProvider(state: state))
+        providerManager.register(TestRunnerProvider(state: state))
+
         providerManager.start()
 
         UpdateChecker.shared.startChecking()

@@ -5,8 +5,8 @@ import os.log
 private let log = Logger(subsystem: "com.notchbar", category: "history")
 
 struct PastSession: Identifiable {
-    let id: String  // session directory name
-    let providerID: AgentProviderID
+    let id: String
+    let providerID: ProviderID
     let projectPath: String
     let projectName: String
     let lastModified: Date

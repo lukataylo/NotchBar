@@ -1,5 +1,8 @@
 import AppKit
 import ApplicationServices
+import os.log
+
+private let termLog = Logger(subsystem: "com.notchbar", category: "terminal")
 
 /// Shared AppleScript helpers for Terminal.app / iTerm2 interaction.
 enum TerminalHelper {
@@ -57,7 +60,11 @@ enum TerminalHelper {
             end repeat
         end tell
         """
-        NSAppleScript(source: iTermScript)?.executeAndReturnError(nil)
+        var iTermError: NSDictionary?
+        NSAppleScript(source: iTermScript)?.executeAndReturnError(&iTermError)
+        if iTermError != nil {
+            termLog.warning("Both Terminal.app and iTerm2 failed for sendInput")
+        }
     }
 
     /// Open a new terminal tab and run a command.
@@ -85,6 +92,10 @@ enum TerminalHelper {
             end tell
         end tell
         """
-        NSAppleScript(source: iTermScript)?.executeAndReturnError(nil)
+        var iTermError2: NSDictionary?
+        NSAppleScript(source: iTermScript)?.executeAndReturnError(&iTermError2)
+        if iTermError2 != nil {
+            termLog.warning("Both Terminal.app and iTerm2 failed for runCommand")
+        }
     }
 }

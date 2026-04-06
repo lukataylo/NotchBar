@@ -118,6 +118,11 @@ struct PendingApproval: Identifiable {
     let isWriteOperation: Bool
     let timestamp: Date = Date()
     var diffFiles: [DiffFile]?
+
+    // Content preview for the doorbell overlay
+    var fileContent: String?     // For Write: the content being written
+    var editOldString: String?   // For Edit: the string being replaced
+    var editNewString: String?   // For Edit: the replacement string
 }
 
 enum SessionState: Int, Comparable {
@@ -181,17 +186,17 @@ struct ModelPricing {
         "gpt-5.2":       ModelPricing(inputPerMillion: 2.0, outputPerMillion: 8.0),
     ]
 
-    static func estimate(provider: AgentProviderID, model: String?, inputTokens: Int, outputTokens: Int) -> Double {
-        let pricingTable: [String: ModelPricing]
-        switch provider {
-        case .claude:
-            pricingTable = claudePricing
-        case .codex:
-            pricingTable = openAIPricing
-        }
+    /// All known pricing across providers. Keyed by model substring.
+    static let allPricing: [String: ModelPricing] = {
+        var combined: [String: ModelPricing] = [:]
+        for (k, v) in claudePricing { combined[k] = v }
+        for (k, v) in openAIPricing { combined[k] = v }
+        return combined
+    }()
 
-        let key = pricingTable.keys.first { model?.localizedCaseInsensitiveContains($0) == true }
-        guard let selected = key.flatMap({ pricingTable[$0] }) else { return 0 }
+    static func estimate(provider: ProviderID, model: String?, inputTokens: Int, outputTokens: Int) -> Double {
+        let key = allPricing.keys.first { model?.localizedCaseInsensitiveContains($0) == true }
+        guard let selected = key.flatMap({ allPricing[$0] }) else { return 0 }
         return (Double(inputTokens) / 1_000_000 * selected.inputPerMillion)
             + (Double(outputTokens) / 1_000_000 * selected.outputPerMillion)
     }
@@ -199,7 +204,7 @@ struct ModelPricing {
 
 class AgentSession: Identifiable, ObservableObject {
     let id = UUID()
-    let providerID: AgentProviderID
+    let providerID: ProviderID
 
     @Published var name: String
     @Published var projectPath: String
@@ -220,24 +225,30 @@ class AgentSession: Identifiable, ObservableObject {
     @Published var estimatedCost: Double = 0
     @Published var gitBranch: String? = nil
     @Published var gitChangedFiles: Int = 0
-    @Published var pendingApproval: PendingApproval? = nil
+    @Published var pendingApprovals: [PendingApproval] = []
+
+    /// The next approval that needs attention (first in queue)
+    var pendingApproval: PendingApproval? { pendingApprovals.first }
     @Published var terminalAvailable: Bool = false
+    @Published var isPinned: Bool = false
+    @Published var autoApproveAll: Bool = false
+    @Published var lastToolActivityAt: Date? = nil
 
     var transcriptReader: (any LiveTranscriptReader)? = nil
     var startedAt: Date = Date()
     var pid: Int32?
 
-    init(name: String, projectPath: String, providerID: AgentProviderID) {
+    init(name: String, projectPath: String, providerID: ProviderID) {
         self.name = name
         self.projectPath = projectPath
         self.providerID = providerID
     }
 
-    var provider: ProviderDescriptor { ProviderCatalog.descriptor(for: providerID) }
-    var providerDisplayName: String { provider.displayName }
-    var providerShortName: String { provider.shortName }
-    var providerAccentColor: Color { provider.accentColor }
-    var instructionsFileName: String { provider.instructionsFileName }
+    var provider: ProviderDescriptor? { PluginRegistry.shared.descriptor(for: providerID) }
+    var providerDisplayName: String { provider?.displayName ?? providerID.rawValue }
+    var providerShortName: String { provider?.shortName ?? providerID.rawValue }
+    var providerAccentColor: Color { provider?.accentColor ?? .gray }
+    var instructionsFileName: String { provider?.instructionsFileName ?? "INSTRUCTIONS.md" }
 
     var claudeMdContent: String? {
         get { instructionsContent }
@@ -262,6 +273,47 @@ class AgentSession: Identifiable, ObservableObject {
         return String(format: "%.1fh", seconds / 3600)
     }
 
+    // MARK: - Context Window
+
+    var contextWindowSize: Int {
+        guard let model = modelName?.lowercased() else { return 200_000 }
+        if model.contains("opus") && model.contains("4-6") { return 1_000_000 }
+        return 200_000
+    }
+
+    var contextUsage: Double {
+        let total = inputTokens + outputTokens
+        guard total > 0 else { return 0 }
+        return min(Double(total) / Double(contextWindowSize), 1.0)
+    }
+
+    var contextSummary: String {
+        let total = inputTokens + outputTokens
+        guard total > 0 else { return "" }
+        return "\(formatTokens(total)) / \(formatTokens(contextWindowSize))"
+    }
+
+    // MARK: - Stale Detection
+
+    var isStale: Bool {
+        guard isActive, !isCompleted else { return false }
+        guard let lastActivity = lastToolActivityAt else { return false }
+        return Date().timeIntervalSince(lastActivity) > 120
+    }
+
+    var staleDuration: String {
+        guard let lastActivity = lastToolActivityAt else { return "" }
+        let seconds = Date().timeIntervalSince(lastActivity)
+        if seconds < 60 { return "\(Int(seconds))s" }
+        if seconds < 3600 { return "\(Int(seconds / 60))m" }
+        return String(format: "%.1fh", seconds / 3600)
+    }
+
+    var displayStatus: String {
+        if isStale { return "Idle \(staleDuration)" }
+        return statusMessage
+    }
+
     func updateCost() {
         estimatedCost = ModelPricing.estimate(
             provider: providerID,
@@ -272,7 +324,7 @@ class AgentSession: Identifiable, ObservableObject {
     }
 
     var sessionState: SessionState {
-        if pendingApproval != nil { return .needsApproval }
+        if !pendingApprovals.isEmpty { return .needsApproval }
         if isWaitingForUser { return .waitingForUser }
         if isActive && !isCompleted { return .running }
         if isCompleted { return .completed }
@@ -282,6 +334,7 @@ class AgentSession: Identifiable, ObservableObject {
     func appendTask(_ task: TaskItem) {
         if tasks.count >= maxVisibleTasks { tasks.removeFirst() }
         tasks.append(task)
+        lastToolActivityAt = Date()
     }
 
     var completedTaskCount: Int { tasks.filter { $0.status == .completed }.count }
@@ -309,6 +362,9 @@ class NotchState: ObservableObject {
         if let manual = expandedCardIndex, sessions.indices.contains(manual) {
             return manual
         }
+        if let pinned = sessions.firstIndex(where: { $0.isPinned }) {
+            return pinned
+        }
         return autoExpandIndex
     }
 
@@ -325,6 +381,7 @@ class NotchState: ObservableObject {
     }
 
     func selectCard(_ index: Int) {
+        guard sessions.indices.contains(index) else { return }
         expandedCardIndex = index
         activeSessionIndex = index
         lastManualSelectTime = Date()

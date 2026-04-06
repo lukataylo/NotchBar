@@ -15,7 +15,7 @@
 ```
 
 <p align="center">
-  <strong>A live dashboard for local coding agents, crammed into your MacBook notch.</strong>
+  <strong>A plugin-based live dashboard for local coding agents, crammed into your MacBook notch.</strong>
   <br/>
   <em>Because that little black rectangle should earn its keep.</em>
 </p>
@@ -26,49 +26,48 @@
   <img alt="SwiftUI" src="https://img.shields.io/badge/UI-SwiftUI-007AFF?logo=swift&logoColor=white"/>
   <img alt="Zero Dependencies" src="https://img.shields.io/badge/dependencies-0-brightgreen"/>
   <img alt="License" src="https://img.shields.io/badge/license-MIT-blue"/>
-  <img alt="Lines of Code" src="https://img.shields.io/badge/lines-~4.8k-yellow"/>
 </p>
 
 ---
 
 ## What is this
 
-NotchBar turns the dead pixel real estate around your MacBook notch into a live control surface for **Claude Code** and **Codex**.
+NotchBar turns the dead pixel real estate around your MacBook notch into a live control surface for coding agents and dev tools.
 
-It shows you what your agent is doing, what it changed, what it needs from you, and what the session is costing — without forcing you to stare at terminal output like it's 1987.
+It shows you what your agent is doing, what it changed, what it needs from you, and what the session is costing — without forcing you to stare at terminal output.
 
 > **Zero external dependencies.** Pure Swift + Apple frameworks. No node_modules were harmed.
 
-## Why
+## Plugins
 
-Coding agents are powerful. The default interaction model is still "hope you noticed that one line scroll by in the terminal."
+NotchBar uses a plugin architecture. Each coding assistant or dev tool is a plugin that you can enable or disable independently. Disabled plugins use zero resources.
 
-NotchBar fixes that:
+| Plugin | Status | What it does |
+|--------|--------|-------------|
+| **Claude Code** | Stable | Live approvals, socket IPC, tool timeline, reasoning, session history |
+| **Codex** | Beta | Process discovery, transcript monitoring, managed profile install |
+| **Cursor** | Beta | Workspace detection, process monitoring, git status |
+| **Build Monitor** | Beta | Detects cargo, swift, npm, go, make builds. Shows pass/fail |
+| **Test Runner** | Beta | Detects jest, pytest, cargo test, swift test. Shows results |
 
-- **See sessions at a glance** — status, progress, cost, model, all in the notch
-- **Handle approvals without context switching** — approve or reject tool use from the notch panel or via hotkeys
-- **Track everything** — reasoning, tool activity, diffs, token usage, git changes
-- **Multi-agent** — run Claude and Codex side by side, each in their own card
-- **Resume past work** — session history lets you pick up where you left off
+More plugins coming soon. See [Building Plugins](#building-plugins) to create your own.
 
-The goal isn't to replace the terminal. It's to make the terminal *legible*.
+## Key Features
+
+- **Approval doorbell** — when a tool needs approval, the entire panel becomes a focused approval card with file preview, diff view, and 4-level actions (Deny, Allow Once, Allow All, Bypass)
+- **Multi-session monitoring** — run Claude, Codex, and Cursor side by side in a card stack
+- **Live tool timeline** — see every tool invocation with status, elapsed time, and inline diffs
+- **Token & cost tracking** — optional per-model cost estimation for API key users
+- **Git awareness** — branch, changed file count per session
+- **Hotkey-driven** — approve/reject from anywhere without switching windows
 
 ## Install
 
 ### Recommended
 
-Download the packaged [`NotchBar-0.1.0.dmg`](https://github.com/lukataylo/NotchBar/releases/download/v0.1.0/NotchBar-0.1.0.dmg), open it, and drag `NotchBar.app` into `Applications`.
+Download the latest `.dmg` from [Releases](https://github.com/lukataylo/NotchBar/releases), open it, and drag `NotchBar.app` into Applications.
 
-Because current builds are unsigned, macOS may warn on first launch. If it does, right-click the app and choose `Open`, or use `System Settings → Privacy & Security → Open Anyway`.
-
-### Option A: Double-click
-
-```
-Open Install.command
-```
-That's it. It builds, bundles, copies to `/Applications`, and launches.
-
-### Option B: Terminal
+### From Source
 
 ```bash
 git clone https://github.com/lukataylo/NotchBar.git
@@ -76,28 +75,13 @@ cd NotchBar
 ./install.sh
 ```
 
-If a prebuilt app exists in `dist/`, the installer uses it first. Otherwise it builds the app locally with Swift.
-
 > **Requirements:** macOS 13+ and Xcode Command Line Tools (`xcode-select --install`).
-> First launch may trigger Gatekeeper — open System Settings → Privacy & Security → Open Anyway.
 
 ### Build a DMG
 
 ```bash
-cd ~/Documents/NotchBar
 ./scripts/create_dmg.sh
 ```
-
-This produces:
-
-```text
-dist/NotchBar.app
-dist/NotchBar-0.1.0.dmg
-```
-
-### Detailed install notes
-
-See [INSTALL.md](INSTALL.md).
 
 ## Keyboard Shortcuts
 
@@ -106,28 +90,8 @@ See [INSTALL.md](INSTALL.md).
 | `Cmd Shift C` | Toggle the notch panel |
 | `Cmd Shift Y` | Approve a pending tool use |
 | `Cmd Shift N` | Reject a pending tool use |
-| `Cmd ,` | Open Settings |
-
-## Provider Support
-
-### Claude Code — full live integration
-
-- Unix domain socket IPC for near-instant tool events and approval cards (~9ms round-trip)
-- Hooks installed in `~/.claude/settings.json`, socket server at `~/.notchbar/notchbar.sock`
-- Approve/reject directly from the notch (no terminal context switch)
-- Reply to Claude from the notch without switching to Terminal
-- Session history and resume from `~/.claude/projects/`
-- Reasoning summaries, token tracking, optional cost estimation (for API key users)
-
-### Codex — monitored sessions
-
-- Auto-discovers running `codex` processes
-- Parses transcript activity from `~/.codex/sessions/*.jsonl`
-- Managed `notchbar` profile install/remove in `~/.codex/config.toml`
-- Session history, resume flow, terminal input injection
-- Task timeline with command tracking and status
-
-> Codex still owns its own terminal approval UX. NotchBar tracks the session around it rather than pretending Claude-style hooks exist where they don't.
+| `Cmd Shift ]` | Next session |
+| `Cmd Shift [` | Previous session |
 
 ## Architecture
 
@@ -135,30 +99,21 @@ See [INSTALL.md](INSTALL.md).
 ┌─────────────────────────────────────────────────────┐
 │                    App Shell                         │
 │  Infrastructure · Views · CardStack · Timeline       │
-│  Settings · Onboarding · Components · Shapes         │
+│  ApprovalOverlay · Settings · Components · Shapes    │
 ├─────────────────────────────────────────────────────┤
-│               Provider-Neutral State                 │
-│  Models · ProviderCore · ProviderManager             │
-├──────────────────────┬──────────────────────────────┤
-│   Claude Provider    │      Codex Provider           │
-│  ClaudeCodeBridge    │  CodexProvider                │
-│  SocketServer        │  CodexTranscriptReader        │
-│  TranscriptReader    │                               │
-│  SessionHistory      │                               │
-├──────────────────────┴──────────────────────────────┤
+│              Plugin System                           │
+│  ProviderCore · PluginRegistry · ProviderManager     │
+├──────────┬──────────┬──────────┬──────────┬─────────┤
+│  Claude  │  Codex   │  Cursor  │  Build   │  Test   │
+│  Code    │          │          │  Monitor │  Runner  │
+├──────────┴──────────┴──────────┴──────────┴─────────┤
 │                  Shared Utilities                     │
-│  Shell · TerminalHelper · GitIntegration             │
-│  UpdateChecker                                       │
+│  Shell · GitIntegration · SocketServer               │
+│  TranscriptReader · TerminalHelper                   │
 └─────────────────────────────────────────────────────┘
 ```
 
-Three layers, zero provider-specific conditionals in the UI:
-
-1. **App shell** — windows, panels, menu bar, hotkeys, SwiftUI views
-2. **Provider-neutral state** — shared session models, capability flags, action routing
-3. **Provider implementations** — discovery, transcript parsing, approvals, integration install
-
-Each provider declares capabilities (`liveApprovals`, `liveReasoning`, `sessionHistory`, `integrationInstall`) and the UI degrades gracefully based on what's available.
+**Plugin contract:** Implement `AgentProviderController`, return a `ProviderDescriptor`, register one line in `AppDelegate`. The UI picks up everything else automatically via capability flags.
 
 ### Hook IPC (Claude Code)
 
@@ -167,52 +122,31 @@ Claude Code → hook script (bash) → nc -U notchbar.sock → NotchBar
                                   ← JSON response ←
 ```
 
-The hook script is 15 lines of bash. It connects to NotchBar's Unix domain socket, sends the tool event, and receives the approval decision. If NotchBar isn't running, the connection fails instantly and the hook auto-approves. No file polling, no process scanning, ~9ms round-trip.
+~9ms round-trip. If NotchBar isn't running, the hook auto-approves. Your agent is never stuck waiting.
 
-## Project Structure
+## Building Plugins
 
-```
-Sources/NotchBar/
-├── main.swift                  # entry point
-├── Infrastructure.swift        # panels, hotkeys, menu bar, app delegate
-├── Views.swift                 # collapsed/expanded notch views
-├── CardStack.swift             # session cards (expanded + collapsed)
-├── Timeline.swift              # task timeline with approval nodes
-├── Components.swift            # progress ring, diff views, dot progress
-├── Shapes.swift                # notch shape geometry
-├── Settings.swift              # preferences UI + launch agent
-├── Onboarding.swift            # first-launch setup wizard
-├── Models.swift                # AgentSession, TaskItem, NotchState, pricing
-├── ProviderCore.swift          # protocols, capabilities, provider catalog
-├── ProviderManager.swift       # provider routing and lifecycle
-├── ClaudeCodeBridge.swift      # Claude hooks, socket events, approvals
-├── SocketServer.swift          # Unix domain socket IPC server
-├── CodexProvider.swift         # Codex process discovery + monitoring
-├── TranscriptReader.swift      # Claude transcript (.jsonl) parser
-├── CodexTranscriptReader.swift # Codex transcript (.jsonl) parser
-├── SessionHistory.swift        # past session scanning + resume
-├── Shell.swift                 # process runner, pgrep, JSONL parsing
-├── TerminalHelper.swift        # Terminal.app / iTerm2 AppleScript bridge
-├── GitIntegration.swift        # branch, status, diff parsing
-└── UpdateChecker.swift         # GitHub release polling
+Adding a plugin to NotchBar is one Swift file + one line of registration:
+
+```bash
+# In Claude Code, run:
+/create-plugin
 ```
 
-## Features at a Glance
+This loads the plugin development guide with the full protocol, patterns, and examples. Or read `.claude/commands/create-plugin.md` directly.
 
-| Feature | Claude | Codex |
-|---------|:------:|:-----:|
-| Live session monitoring | yes | yes |
-| Real-time reasoning | yes | yes |
-| Tool activity timeline | yes | yes |
-| Live approval cards | yes | — |
-| Hotkey approve/reject | yes | — |
-| Token & cost tracking | yes | yes |
-| Git branch & diff view | yes | yes |
-| Session history & resume | yes | yes |
-| Integration install/remove | yes | yes |
-| CLAUDE.md / AGENTS.md editor | yes | yes |
-| Desktop notifications | yes | yes |
-| Multi-session support | yes | yes |
+**Three patterns:**
+1. **Process monitor** — detect via pgrep, track lifecycle (Build Monitor, Test Runner)
+2. **Transcript monitor** — tail log files, parse entries (Codex, Cursor)
+3. **Hook IPC** — install hooks, handle events via socket (Claude Code)
+
+## Settings
+
+NotchBar has three settings tabs:
+
+- **Plugins** — enable/disable plugins, configure per-plugin settings (approval rules, integration install)
+- **Display** — context window ring, compact mode, card section toggles
+- **General** — launch at login, notifications, cost tracking, poll interval
 
 ## FAQ
 
@@ -220,10 +154,10 @@ Sources/NotchBar/
 No. NotchBar is local-first. The only network call is checking GitHub releases for updates once a day.
 
 **Does it work on external monitors?**
-Yes. NotchBar creates a panel on every connected display. Screens without a notch get a pill-shaped overlay instead.
+Yes. NotchBar creates a panel on every connected display. Screens without a notch get a pill-shaped overlay.
 
 **What happens if NotchBar crashes or quits?**
-Claude Code keeps working. The hook script detects NotchBar is gone and auto-approves everything — your agent is never stuck waiting.
+Claude Code keeps working. The hook script detects NotchBar is gone and auto-approves — your agent is never stuck waiting.
 
 **Does it work with other terminals?**
 Terminal.app and iTerm2 are supported for input injection. Session monitoring works regardless of terminal.
@@ -231,14 +165,6 @@ Terminal.app and iTerm2 are supported for input injection. Session monitoring wo
 ## Contributing
 
 Issues and PRs welcome at [github.com/lukataylo/NotchBar](https://github.com/lukataylo/NotchBar).
-
-## Stability Notes
-
-- Socket-based IPC replaces file-based polling — 9ms latency, no DispatchSource races
-- macOS automatic termination disabled — NotchBar stays alive in the background
-- Hook script auto-approves if NotchBar is unreachable (fail-open, never blocks Claude)
-- Ghost session filtering: only real project directories under `/Users/` create sessions
-- Cost tracking off by default (most users are on Max/Pro plans)
 
 ## License
 

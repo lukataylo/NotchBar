@@ -15,7 +15,7 @@ README_PATH="${STAGING_DIR}/Install NotchBar.txt"
 # Override with env vars, or set SIGN_IDENTITY="" for unsigned builds.
 # Uses SHA-1 hash to avoid ambiguity when multiple certs exist.
 SIGN_IDENTITY="${SIGN_IDENTITY:-4D77EE9729D712C71A67E3E3657C9A17EC6F6122}"
-APPLE_ID="${APPLE_ID:-}"
+APPLE_ID="${APPLE_ID:-luka.taylor@gmail.com}"
 APPLE_TEAM_ID="${APPLE_TEAM_ID:-5QC5886P5V}"
 NOTARIZE="${NOTARIZE:-}"
 

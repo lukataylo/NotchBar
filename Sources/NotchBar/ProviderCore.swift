@@ -1,12 +1,26 @@
 import Foundation
 import SwiftUI
 
-enum AgentProviderID: String, CaseIterable, Identifiable {
-    case claude
-    case codex
+// MARK: - Provider Identity
 
+/// A lightweight, string-based provider identifier.
+/// Replaces the old closed enum so new plugins can register without modifying core code.
+struct ProviderID: Hashable, Codable, Identifiable, RawRepresentable {
+    let rawValue: String
     var id: String { rawValue }
+
+    init(rawValue: String) { self.rawValue = rawValue }
+    init(_ rawValue: String) { self.rawValue = rawValue }
+
+    // Built-in IDs — convenience constants, not a closed set
+    static let claude = ProviderID("claude")
+    static let codex = ProviderID("codex")
+    static let cursor = ProviderID("cursor")
+    static let builds = ProviderID("builds")
+    static let tests = ProviderID("tests")
 }
+
+// MARK: - Capabilities & Descriptor
 
 struct ProviderCapabilities {
     let liveApprovals: Bool
@@ -15,8 +29,12 @@ struct ProviderCapabilities {
     let integrationInstall: Bool
 }
 
+enum PluginStability {
+    case stable, beta
+}
+
 struct ProviderDescriptor {
-    let id: AgentProviderID
+    let id: ProviderID
     let displayName: String
     let shortName: String
     let executableName: String
@@ -30,34 +48,54 @@ struct ProviderDescriptor {
     let statusColor: Color
     let symbolName: String
     let capabilities: ProviderCapabilities
+    let description: String
+    let stability: PluginStability
+    let defaultEnabled: Bool
+
+    init(id: ProviderID, displayName: String, shortName: String, executableName: String,
+         settingsPath: String?, instructionsFileName: String, integrationTitle: String,
+         installActionTitle: String, removeActionTitle: String, integrationSummary: String,
+         accentColor: Color, statusColor: Color, symbolName: String,
+         capabilities: ProviderCapabilities, description: String,
+         stability: PluginStability, defaultEnabled: Bool = true) {
+        self.id = id; self.displayName = displayName; self.shortName = shortName
+        self.executableName = executableName; self.settingsPath = settingsPath
+        self.instructionsFileName = instructionsFileName; self.integrationTitle = integrationTitle
+        self.installActionTitle = installActionTitle; self.removeActionTitle = removeActionTitle
+        self.integrationSummary = integrationSummary; self.accentColor = accentColor
+        self.statusColor = statusColor; self.symbolName = symbolName
+        self.capabilities = capabilities; self.description = description
+        self.stability = stability; self.defaultEnabled = defaultEnabled
+    }
 }
 
+// MARK: - Tool Approval
+
 enum ToolApprovalCategory {
-    case read
-    case edit
-    case command
-    case agent
-    case unknown
+    case read, edit, command, agent, management, unknown
 
     static func fromToolName(_ toolName: String) -> ToolApprovalCategory {
         switch toolName {
-        case "Read", "Grep", "Glob":
-            return .read
-        case "Edit", "Write", "NotebookEdit":
-            return .edit
-        case "Bash":
-            return .command
-        case "Agent":
-            return .agent
-        default:
-            return .unknown
+        case "Read", "Grep", "Glob": return .read
+        case "Edit", "Write", "NotebookEdit": return .edit
+        case "Bash": return .command
+        case "Agent": return .agent
+        case "TaskCreate", "TaskUpdate", "TaskGet", "TaskList",
+             "TaskStop", "TaskOutput", "TodoWrite", "TodoRead",
+             "Skill", "ToolSearch", "LSP",
+             "WebSearch", "WebFetch": return .management
+        default: return .unknown
         }
     }
 }
 
+// MARK: - Transcript Protocol
+
 protocol LiveTranscriptReader: AnyObject {
     func readNew() -> [TranscriptEntry]
 }
+
+// MARK: - Provider Controller Protocol (the plugin interface)
 
 protocol AgentProviderController: AnyObject {
     var descriptor: ProviderDescriptor { get }
@@ -80,57 +118,54 @@ extension AgentProviderController {
     func resumeSession(_ session: PastSession) {}
 }
 
-enum ProviderCatalog {
-    static let claude = ProviderDescriptor(
-        id: .claude,
-        displayName: "Claude Code",
-        shortName: "Claude",
-        executableName: "claude",
-        settingsPath: "~/.claude/settings.json",
-        instructionsFileName: "CLAUDE.md",
-        integrationTitle: "Claude hooks",
-        installActionTitle: "Install Hooks",
-        removeActionTitle: "Remove Hooks",
-        integrationSummary: "Install NotchBar hook entries into Claude's settings so live tool events and approval requests appear in the notch.",
-        accentColor: brandOrange,
-        statusColor: brandSuccess,
-        symbolName: "sparkles.rectangle.stack",
-        capabilities: ProviderCapabilities(
-            liveApprovals: true,
-            liveReasoning: true,
-            sessionHistory: true,
-            integrationInstall: true,
-        )
-    )
+// MARK: - Plugin Registry
 
-    static let codex = ProviderDescriptor(
-        id: .codex,
-        displayName: "Codex",
-        shortName: "Codex",
-        executableName: "codex",
-        settingsPath: "~/.codex/config.toml",
-        instructionsFileName: "AGENTS.md",
-        integrationTitle: "Codex profile",
-        installActionTitle: "Install Profile",
-        removeActionTitle: "Remove Profile",
-        integrationSummary: "Install a managed `notchbar` profile in Codex config. It preserves your defaults and adds a recommended workspace-write, on-request approval preset for monitored runs.",
-        accentColor: codexBlue,
-        statusColor: brandSuccess,
-        symbolName: "terminal",
-        capabilities: ProviderCapabilities(
-            liveApprovals: false,
-            liveReasoning: true,
-            sessionHistory: true,
-            integrationInstall: true,
-        )
-    )
+/// Central registry for all providers (built-in and external).
+/// Plugins register themselves here. The UI queries the registry to
+/// know what's available, what's enabled, and how to display it.
+class PluginRegistry: ObservableObject {
+    static let shared = PluginRegistry()
 
-    static func descriptor(for id: AgentProviderID) -> ProviderDescriptor {
-        switch id {
-        case .claude:
-            return claude
-        case .codex:
-            return codex
+    /// All registered descriptors, keyed by ID
+    @Published private(set) var descriptors: [ProviderID: ProviderDescriptor] = [:]
+
+    /// Ordered list of all known plugin IDs (registration order)
+    @Published private(set) var allPluginIDs: [ProviderID] = []
+
+    func register(_ descriptor: ProviderDescriptor) {
+        let isNew = descriptors[descriptor.id] == nil
+        descriptors[descriptor.id] = descriptor
+        if !allPluginIDs.contains(descriptor.id) {
+            allPluginIDs.append(descriptor.id)
+        }
+        // On first registration, apply the default enabled state
+        if isNew && !descriptor.defaultEnabled {
+            let key = "plugin.disabled.\(descriptor.id.rawValue)"
+            if UserDefaults.standard.object(forKey: key) == nil {
+                UserDefaults.standard.set(true, forKey: key)
+            }
         }
     }
+
+    func descriptor(for id: ProviderID) -> ProviderDescriptor? {
+        descriptors[id]
+    }
+
+    // MARK: - Enable/Disable
+
+    func isEnabled(_ id: ProviderID) -> Bool {
+        !UserDefaults.standard.bool(forKey: "plugin.disabled.\(id.rawValue)")
+    }
+
+    func setEnabled(_ id: ProviderID, enabled: Bool) {
+        UserDefaults.standard.set(!enabled, forKey: "plugin.disabled.\(id.rawValue)")
+        objectWillChange.send()
+    }
+
+    var enabledPluginIDs: [ProviderID] {
+        allPluginIDs.filter { isEnabled($0) }
+    }
 }
+
+// Backward compatibility — existing code may still reference this name
+typealias AgentProviderID = ProviderID

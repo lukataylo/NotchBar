@@ -94,15 +94,45 @@ struct SessionPicker: View {
         }
     }
     func dotColor(_ s: ClaudeSession) -> Color {
-        if s.progress >= 1.0 { return brandSuccess }
-        if s.isActive { return .orange }
-        return .gray
+        s.sessionState.stateColor
     }
 }
 
 func progressColor(_ s: ClaudeSession) -> Color {
-    if s.progress >= 1.0 { return brandSuccess }
-    return .orange
+    s.sessionState.stateColor
+}
+
+func contextColor(for usage: Double) -> Color {
+    if usage < 0.6 { return brandSuccess }
+    if usage < 0.8 { return .orange }
+    return .red
+}
+
+func ringProgress(for session: ClaudeSession) -> Double {
+    // Completed/idle always show definitive state
+    if session.isCompleted { return 1.0 }
+    if session.sessionState == .idle { return 0.0 }
+
+    if AppSettings.shared.showContextWindow {
+        return session.contextUsage
+    }
+    // Activity mode: state-driven
+    switch session.sessionState {
+    case .running:        return 0.3
+    case .waitingForUser: return 0.3
+    case .needsApproval:  return 0.3
+    default:              return 0.0
+    }
+}
+
+func ringColor(for session: ClaudeSession) -> Color {
+    // Completed sessions always show green
+    if session.isCompleted { return SessionState.completed.stateColor }
+
+    if AppSettings.shared.showContextWindow {
+        return contextColor(for: session.contextUsage)
+    }
+    return session.sessionState.stateColor
 }
 
 // MARK: - Color Rail
@@ -121,7 +151,6 @@ struct ColorRail: View {
                     let isPulsing = state == .waitingForUser || state == .needsApproval
                     RoundedRectangle(cornerRadius: 2)
                         .fill(state.stateColor)
-                        .opacity(isPulsing ? 1.0 : 1.0)
                         .overlay(alignment: .trailing) {
                             if idx == expandedIndex {
                                 Rectangle()

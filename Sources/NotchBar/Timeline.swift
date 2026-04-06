@@ -10,7 +10,7 @@ struct TimelineSpine: View {
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(tasks.enumerated()), id: \.1.id) { idx, task in
-                TimelineTaskNode(task: task, isLast: idx == tasks.count - 1 && pendingApproval == nil, session: session)
+                TimelineTaskNode(task: task, session: session)
             }
 
             if let approval = pendingApproval {
@@ -28,100 +28,70 @@ struct TimelineSpine: View {
 
 struct TimelineTaskNode: View {
     let task: TaskItem
-    let isLast: Bool
     let session: ClaudeSession
 
     @State private var expanded: Bool = false
 
+    private var compact: Bool { AppSettings.shared.compactMode }
+
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            // Spine column
-            VStack(spacing: 0) {
-                nodeCircle
-                if !isLast {
-                    Rectangle()
-                        .fill(task.status == .running ? SessionState.running.stateColor.opacity(0.4) : Color.white.opacity(0.08))
-                        .frame(width: 2)
-                        .frame(maxHeight: .infinity)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                statusDot
+                if task.parentAgentId != nil {
+                    Spacer().frame(width: 4)
+                }
+                if task.isAgentTask {
+                    Image(systemName: "person.2.fill")
+                        .font(.system(size: 8))
+                        .foregroundColor(.purple.opacity(0.6))
+                }
+                Text(task.title)
+                    .font(.system(size: compact ? 10 : 11, weight: .medium))
+                    .foregroundColor(.white.opacity(0.8))
+                    .lineLimit(1)
+                Spacer()
+                Text(task.elapsed)
+                    .font(.system(size: compact ? 8 : 9, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.25))
+                Text(task.status.label)
+                    .font(.system(size: compact ? 8 : 9, weight: .semibold))
+                    .foregroundColor(task.status.color)
+                if task.diffFiles != nil {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 8))
+                        .foregroundColor(.white.opacity(0.2))
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
                 }
             }
-            .frame(width: 24)
-
-            // Content
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    if task.parentAgentId != nil {
-                        Spacer().frame(width: 8)
-                    }
-                    if task.isAgentTask {
-                        Image(systemName: "person.2.fill")
-                            .font(.system(size: 8))
-                            .foregroundColor(.purple.opacity(0.6))
-                    }
-                    Text(task.title)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.white.opacity(0.8))
-                        .lineLimit(1)
-                    Spacer()
-                    Text(task.elapsed)
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.25))
-                    Text(task.status.label)
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(task.status.color)
-                    if task.diffFiles != nil {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 8))
-                            .foregroundColor(.white.opacity(0.2))
-                            .rotationEffect(.degrees(expanded ? 90 : 0))
-                    }
-                }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    if task.diffFiles != nil {
-                        withAnimation(.easeInOut(duration: 0.25)) { expanded.toggle() }
-                    }
-                }
-
-                if expanded, let diffs = task.diffFiles {
-                    DiffContentView(files: diffs)
-                        .padding(.top, 4)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if task.diffFiles != nil {
+                    withAnimation(.easeInOut(duration: 0.25)) { expanded.toggle() }
                 }
             }
-            .padding(.vertical, 4)
+
+            if expanded, let diffs = task.diffFiles {
+                DiffContentView(files: diffs)
+                    .padding(.top, 4)
+                    .padding(.leading, 12)
+            }
         }
+        .padding(.vertical, compact ? 2 : 4)
     }
 
     @ViewBuilder
-    var nodeCircle: some View {
-        let nodeSize: CGFloat = task.status == .running || task.status == .pendingApproval ? 8 : 6
-        let color = task.status.color
-
+    var statusDot: some View {
+        let size: CGFloat = task.status == .running ? 7 : 5
         if task.isAgentTask && task.status != .running {
             Circle()
                 .stroke(Color.purple.opacity(0.6), lineWidth: 1)
-                .frame(width: 6, height: 6)
-                .padding(.top, 6)
+                .frame(width: 5, height: 5)
         } else {
             Circle()
-                .fill(color)
-                .frame(width: nodeSize, height: nodeSize)
-                .padding(.top, task.status == .running ? 5 : 6)
-                .modifier(PulseScale(active: task.status == .running))
+                .fill(task.status.color)
+                .frame(width: size, height: size)
         }
-    }
-}
-
-private struct PulseScale: ViewModifier {
-    let active: Bool
-    @State private var pulsing = false
-
-    func body(content: Content) -> some View {
-        content
-            .scaleEffect(active && pulsing ? 1.3 : 1.0)
-            .animation(active ? .easeInOut(duration: 1.0).repeatForever(autoreverses: true) : .default, value: pulsing)
-            .onAppear { if active { pulsing = true } }
-            .onChange(of: active) { newVal in pulsing = newVal }
     }
 }
 
@@ -144,35 +114,8 @@ struct TimelineEventNode: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            // Spine interruption
-            VStack(spacing: 0) {
-                Rectangle().fill(Color.white.opacity(0.08)).frame(width: 2, height: 4)
-                eventIcon
-                Rectangle().fill(Color.white.opacity(0.08)).frame(width: 2, height: 4)
-            }
-            .frame(width: 24)
-
-            // Event box
-            eventContent
-                .padding(.vertical, 4)
-        }
-    }
-
-    @ViewBuilder
-    var eventIcon: some View {
-        switch kind {
-        case .approvalRequired(_, let session):
-            Image(systemName: "exclamationmark.shield.fill")
-                .font(.system(size: 10))
-                .foregroundColor(session.providerAccentColor)
-                .frame(width: 16, height: 16)
-        case .sessionCompleted:
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 10))
-                .foregroundColor(SessionState.completed.stateColor)
-                .frame(width: 16, height: 16)
-        }
+        eventContent
+            .padding(.vertical, AppSettings.shared.compactMode ? 2 : 4)
     }
 
     @ViewBuilder

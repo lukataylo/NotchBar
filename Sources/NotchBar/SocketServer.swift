@@ -144,9 +144,8 @@ class SocketServer {
 
         // Parse the JSON
         guard let event = try? JSONDecoder().decode(ClaudeCodeEvent.self, from: buffer) else {
-            log.error("Failed to decode event from socket")
-            // Send auto-approve for malformed events
-            let response = "{\"decision\":\"approve\"}\n"
+            log.error("Failed to decode event from socket — rejecting malformed request")
+            let response = "{\"error\":\"malformed request\"}\n"
             _ = response.utf8CString.withUnsafeBufferPointer { ptr in
                 write(fd, ptr.baseAddress, response.utf8.count)
             }
@@ -171,8 +170,8 @@ class SocketServer {
             lock.lock()
             guard !responded else { lock.unlock(); return }
             responded = true
-            lock.unlock()
             responseJSON = response
+            lock.unlock()
             semaphore.signal()
         }
 
@@ -181,16 +180,22 @@ class SocketServer {
         let timeout = DispatchTime.now() + .seconds(timeoutMinutes * 60)
         if semaphore.wait(timeout: timeout) == .timedOut {
             lock.lock()
-            responded = true
-            lock.unlock()
-            log.warning("Approval timed out after \(timeoutMinutes)min, auto-approving")
-            responseJSON = "{\"decision\":\"approve\"}"
-            // Clean up orphaned callbacks so approval timer doesn't write to dead socket
-            onTimeout?(event)
+            if !responded {
+                responded = true
+                responseJSON = "{\"decision\":\"approve\"}"
+                lock.unlock()
+                log.warning("Approval timed out after \(timeoutMinutes)min, auto-approving")
+                onTimeout?(event)
+            } else {
+                lock.unlock()
+                // Callback beat us — responseJSON already set
+            }
         }
 
-        // Send response
+        // Send response (safe — either callback or timeout wrote it under lock)
+        lock.lock()
         let line = responseJSON + "\n"
+        lock.unlock()
         _ = line.withCString { ptr in
             write(fd, ptr, line.utf8.count)
         }
