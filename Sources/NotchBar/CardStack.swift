@@ -64,9 +64,9 @@ struct SessionCardCollapsed: View {
 
             if hovering, let onClose = onClose {
                 Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(closeHovering ? .white.opacity(0.8) : .white.opacity(0.3))
+                    MatrixClose()
+                        .stroke(closeHovering ? .white.opacity(0.8) : .white.opacity(0.3), lineWidth: 1.5)
+                        .frame(width: 8, height: 8)
                         .frame(width: 16, height: 16)
                         .background(closeHovering ? Color.white.opacity(0.1) : Color.clear)
                         .cornerRadius(4)
@@ -75,9 +75,9 @@ struct SessionCardCollapsed: View {
                 .buttonStyle(.plain)
                 .onHover { closeHovering = $0 }
             } else {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 8))
-                    .foregroundColor(.white.opacity(hovering ? 0.4 : 0.15))
+                MatrixChevronRight()
+                    .stroke(.white.opacity(hovering ? 0.4 : 0.15), lineWidth: 1.5)
+                    .frame(width: 6, height: 8)
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
@@ -198,13 +198,15 @@ struct SessionCardExpanded: View {
 
                 if nameHovering || session.isPinned {
                     Button { session.isPinned.toggle() } label: {
-                        Image(systemName: session.isPinned ? "pin.fill" : "pin")
-                            .font(.system(size: 9))
-                            .foregroundColor(session.isPinned ? brandOrange : .white.opacity(0.3))
+                        MatrixPin()
+                            .stroke(session.isPinned ? brandOrange : .white.opacity(0.3), lineWidth: 1.5)
+                            .frame(width: 9, height: 9)
                     }
                     .buttonStyle(.plain)
                 }
             }
+            .contentShape(Rectangle())
+            .onTapGesture { onCollapse() }
             .onHover { nameHovering = $0 }
 
             if session.isStale {
@@ -222,9 +224,9 @@ struct SessionCardExpanded: View {
 
             if let onClose = onClose {
                 Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.35))
+                    MatrixClose()
+                        .stroke(.white.opacity(0.35), lineWidth: 1.5)
+                        .frame(width: 10, height: 10)
                         .frame(width: 24, height: 24)
                         .contentShape(Rectangle())
                 }
@@ -233,9 +235,9 @@ struct SessionCardExpanded: View {
 
             if state.sessions.count > 1 {
                 Button(action: onCollapse) {
-                    Image(systemName: "chevron.compact.down")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.4))
+                    MatrixChevronDown()
+                        .stroke(.white.opacity(0.4), lineWidth: 1.5)
+                        .frame(width: 14, height: 14)
                         .frame(width: 24, height: 24)
                         .contentShape(Rectangle())
                 }
@@ -454,9 +456,9 @@ struct NewSessionHeaderButton: View {
         Button {
             pickFolderAndLaunch()
         } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(hovering ? .white.opacity(0.7) : .white.opacity(0.3))
+            MatrixPlus()
+                .stroke(hovering ? .white.opacity(0.7) : .white.opacity(0.3), lineWidth: 1.5)
+                .frame(width: 11, height: 11)
                 .frame(width: 22, height: 22)
                 .background(hovering ? Color.white.opacity(0.1) : Color.clear)
                 .cornerRadius(5)

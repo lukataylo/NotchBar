@@ -69,7 +69,7 @@ struct OnboardingView: View {
             Text("NotchBar")
                 .font(.system(size: 28, weight: .bold))
 
-            Text("Your MacBook notch is now a\nlive dashboard for local coding agents.")
+            Text("Your notch now shows what your\ncoding agent is up to.")
                 .font(.system(size: 15))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -108,7 +108,7 @@ struct OnboardingView: View {
                 .font(.system(size: 48))
                 .foregroundColor(selectedProvider.accentColor)
 
-            Text("Connect to \(selectedProvider.displayName)")
+            Text("Connect \(selectedProvider.displayName)")
                 .font(.system(size: 22, weight: .bold))
 
             VStack(alignment: .leading, spacing: 12) {
@@ -171,7 +171,7 @@ struct OnboardingView: View {
                 }) {
                     HStack(spacing: 6) {
                         Image(systemName: integrationInstalled ? "checkmark" : "link")
-                        Text(integrationInstalled ? "Installed!" : selectedProvider.installActionTitle)
+                        Text(integrationInstalled ? "Connected!" : selectedProvider.installActionTitle)
                     }
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white)
@@ -184,7 +184,7 @@ struct OnboardingView: View {
             }
 
             if integrationInstallFailed {
-                Text("Installation failed. Check that \(selectedProvider.settingsPath ?? "the provider config path") is writable.")
+                Text("Couldn't connect. Make sure \(selectedProvider.settingsPath ?? "the config file") is writable.")
                     .font(.system(size: 11))
                     .foregroundColor(.red)
                     .padding(.horizontal, 40)
@@ -202,7 +202,7 @@ struct OnboardingView: View {
                 .font(.system(size: 48))
                 .foregroundColor(selectedProvider.accentColor)
 
-            Text("Approval Preferences")
+            Text("What needs your OK?")
                 .font(.system(size: 22, weight: .bold))
 
             Text(approvalStepDescription)
@@ -216,9 +216,9 @@ struct OnboardingView: View {
                         Image(systemName: "doc.text.magnifyingglass")
                             .frame(width: 20)
                         VStack(alignment: .leading) {
-                            Text("Auto-approve reads")
+                            Text("Let it read files")
                                 .font(.system(size: 13, weight: .medium))
-                            Text("Read, Grep, Glob — safe operations")
+                            Text("Read, Grep, Glob — just looking, no changes")
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
                         }
@@ -230,9 +230,9 @@ struct OnboardingView: View {
                         Image(systemName: "pencil")
                             .frame(width: 20)
                         VStack(alignment: .leading) {
-                            Text("Auto-approve file edits")
+                            Text("Let it edit files")
                                 .font(.system(size: 13, weight: .medium))
-                            Text("Edit, Write — modifies your files")
+                            Text("Edit, Write — changes your code")
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
                         }
@@ -244,13 +244,13 @@ struct OnboardingView: View {
                         Image(systemName: "terminal")
                             .frame(width: 20)
                         VStack(alignment: .leading) {
-                            Text("Auto-approve bash commands")
+                            Text("Let it run commands")
                                 .font(.system(size: 13, weight: .medium))
                             HStack(spacing: 4) {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .foregroundColor(.orange)
                                     .font(.system(size: 9))
-                                Text("Can run arbitrary commands")
+                                Text("Shell access — be careful with this one")
                                     .font(.system(size: 11))
                                     .foregroundColor(.orange)
                             }
@@ -263,9 +263,9 @@ struct OnboardingView: View {
                         Image(systemName: "person.2")
                             .frame(width: 20)
                         VStack(alignment: .leading) {
-                            Text("Auto-approve subagents")
+                            Text("Let it launch subagents")
                                 .font(.system(size: 13, weight: .medium))
-                            Text("Agent tool — spawns autonomous workers")
+                            Text("Spawns helpers that work on their own")
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
                         }
@@ -275,7 +275,7 @@ struct OnboardingView: View {
                 Divider()
 
                 if !selectedProvider.capabilities.liveApprovals {
-                    Text("\(selectedProvider.displayName) uses its own approval flow. These preferences apply to providers with live approvals (like Claude Code).")
+                    Text("\(selectedProvider.displayName) handles approvals in its own terminal. These settings kick in for tools that support NotchBar approvals.")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
@@ -378,16 +378,16 @@ struct OnboardingView: View {
 
     var providerSafetyText: String {
         if selectedProvider.capabilities.liveApprovals {
-            return "If NotchBar is closed, your agent keeps working and approvals fail open after timeout."
+            return "If NotchBar is closed, your agent keeps working — nothing gets stuck."
         }
-        return "NotchBar monitors \(selectedProvider.displayName) sessions without intercepting its own approval flow."
+        return "NotchBar watches \(selectedProvider.displayName) sessions without getting in the way."
     }
 
     var approvalStepDescription: String {
         if selectedProvider.capabilities.liveApprovals {
-            return "Choose what needs your approval.\nUnchecked tools will pause for your review."
+            return "Pick what your agent can do without asking.\nEverything else pauses for your OK."
         }
-        return "Choose your default approval policy.\n\(selectedProvider.displayName) still confirms risky actions in the terminal, while NotchBar tracks the session around it."
+        return "Pick your default approval policy.\n\(selectedProvider.displayName) still asks in the terminal — NotchBar just shows you what's happening."
     }
 
     func shortcutRow(keys: String, description: String) -> some View {

@@ -167,6 +167,125 @@ struct NotchBarIcon: View {
     }
 }
 
+// MARK: - Geometric Icons (matched to Matrix Sans)
+//
+// Clean, geometric strokes that pair with the Matrix Sans typeface.
+// All drawn on a 12×12 unit grid so they scale uniformly via .frame().
+
+struct MatrixChevronUp: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width, h = rect.height
+        let cx = rect.midX, cy = rect.midY
+        let hw = w * 0.35, hh = h * 0.2
+        var p = Path()
+        p.move(to: CGPoint(x: cx - hw, y: cy + hh))
+        p.addLine(to: CGPoint(x: cx, y: cy - hh))
+        p.addLine(to: CGPoint(x: cx + hw, y: cy + hh))
+        return p
+    }
+}
+
+struct MatrixChevronDown: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width, h = rect.height
+        let cx = rect.midX, cy = rect.midY
+        let hw = w * 0.35, hh = h * 0.2
+        var p = Path()
+        p.move(to: CGPoint(x: cx - hw, y: cy - hh))
+        p.addLine(to: CGPoint(x: cx, y: cy + hh))
+        p.addLine(to: CGPoint(x: cx + hw, y: cy - hh))
+        return p
+    }
+}
+
+struct MatrixChevronRight: Shape {
+    func path(in rect: CGRect) -> Path {
+        let cx = rect.midX, cy = rect.midY
+        let hw = rect.width * 0.2, hh = rect.height * 0.35
+        var p = Path()
+        p.move(to: CGPoint(x: cx - hw, y: cy - hh))
+        p.addLine(to: CGPoint(x: cx + hw, y: cy))
+        p.addLine(to: CGPoint(x: cx - hw, y: cy + hh))
+        return p
+    }
+}
+
+struct MatrixClose: Shape {
+    func path(in rect: CGRect) -> Path {
+        let inset = min(rect.width, rect.height) * 0.25
+        let r = rect.insetBy(dx: inset, dy: inset)
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX, y: r.minY))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
+        p.move(to: CGPoint(x: r.maxX, y: r.minY))
+        p.addLine(to: CGPoint(x: r.minX, y: r.maxY))
+        return p
+    }
+}
+
+struct MatrixPlus: Shape {
+    func path(in rect: CGRect) -> Path {
+        let inset = min(rect.width, rect.height) * 0.2
+        let r = rect.insetBy(dx: inset, dy: inset)
+        var p = Path()
+        p.move(to: CGPoint(x: r.midX, y: r.minY))
+        p.addLine(to: CGPoint(x: r.midX, y: r.maxY))
+        p.move(to: CGPoint(x: r.minX, y: r.midY))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.midY))
+        return p
+    }
+}
+
+struct MatrixPin: Shape {
+    func path(in rect: CGRect) -> Path {
+        let s = min(rect.width, rect.height)
+        let cx = rect.midX, cy = rect.midY
+        var p = Path()
+        // Diamond head
+        let hs = s * 0.28
+        p.move(to: CGPoint(x: cx, y: cy - hs * 1.3))
+        p.addLine(to: CGPoint(x: cx + hs, y: cy - hs * 0.15))
+        p.addLine(to: CGPoint(x: cx, y: cy + hs * 0.3))
+        p.addLine(to: CGPoint(x: cx - hs, y: cy - hs * 0.15))
+        p.closeSubpath()
+        // Stem
+        p.move(to: CGPoint(x: cx, y: cy + hs * 0.3))
+        p.addLine(to: CGPoint(x: cx, y: cy + s * 0.4))
+        return p
+    }
+}
+
+struct MatrixBrain: Shape {
+    func path(in rect: CGRect) -> Path {
+        let s = min(rect.width, rect.height)
+        let cx = rect.midX, cy = rect.midY
+        let r = s * 0.4
+        var p = Path()
+        // Simplified brain: two bumpy lobes
+        p.addEllipse(in: CGRect(x: cx - r, y: cy - r * 0.9, width: r * 1.1, height: r * 1.8))
+        p.addEllipse(in: CGRect(x: cx - r * 0.1, y: cy - r * 0.9, width: r * 1.1, height: r * 1.8))
+        return p
+    }
+}
+
+struct MatrixTerminal: Shape {
+    func path(in rect: CGRect) -> Path {
+        let inset = min(rect.width, rect.height) * 0.15
+        let r = rect.insetBy(dx: inset, dy: inset)
+        var p = Path()
+        // Prompt chevron >_
+        let promptX = r.minX + r.width * 0.15
+        let promptMidY = r.midY - r.height * 0.05
+        p.move(to: CGPoint(x: promptX, y: promptMidY - r.height * 0.2))
+        p.addLine(to: CGPoint(x: promptX + r.width * 0.2, y: promptMidY))
+        p.addLine(to: CGPoint(x: promptX, y: promptMidY + r.height * 0.2))
+        // Cursor underscore
+        p.move(to: CGPoint(x: promptX + r.width * 0.3, y: promptMidY + r.height * 0.2))
+        p.addLine(to: CGPoint(x: promptX + r.width * 0.6, y: promptMidY + r.height * 0.2))
+        return p
+    }
+}
+
 // MARK: - Notch Shape: flat top, rounded bottom corners
 
 struct NotchCollapsedShape: Shape {

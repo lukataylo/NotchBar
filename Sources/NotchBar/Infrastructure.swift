@@ -204,12 +204,12 @@ class StatusItemManager: NSObject {
 
         menu.addItem(.separator())
 
-        let installItem = NSMenuItem(title: "Install Provider Integration", action: #selector(installHooks), keyEquivalent: "")
+        let installItem = NSMenuItem(title: "Set Up Connection", action: #selector(installHooks), keyEquivalent: "")
         installItem.image = NSImage(systemSymbolName: "link.badge.plus", accessibilityDescription: nil)
         installItem.target = self
         menu.addItem(installItem)
 
-        let removeItem = NSMenuItem(title: "Remove Provider Integration", action: #selector(removeHooks), keyEquivalent: "")
+        let removeItem = NSMenuItem(title: "Remove Connection", action: #selector(removeHooks), keyEquivalent: "")
         removeItem.image = NSImage(systemSymbolName: "link.badge.minus", accessibilityDescription: nil)
         removeItem.target = self
         menu.addItem(removeItem)
@@ -245,12 +245,12 @@ class StatusItemManager: NSObject {
         let ok = ProviderManager.shared?.installIntegration(for: state.activeSession) ?? false
         let alert = NSAlert()
         if ok {
-            alert.messageText = "Integration Installed"
-            alert.informativeText = "\(provider.displayName) integration installed successfully."
+            alert.messageText = "Connected"
+            alert.informativeText = "\(provider.displayName) is now connected to NotchBar."
         } else {
             alert.alertStyle = .warning
-            alert.messageText = "Integration Problem"
-            alert.informativeText = "Could not install \(provider.integrationTitle.lowercased()) for \(provider.displayName).\n\nCheck permissions for \(provider.settingsPath ?? "the provider configuration") and try again."
+            alert.messageText = "Couldn't Connect"
+            alert.informativeText = "Something went wrong setting up \(provider.displayName).\n\nMake sure \(provider.settingsPath ?? "the config file") is writable and try again."
         }
         alert.runModal()
     }
@@ -259,12 +259,12 @@ class StatusItemManager: NSObject {
         let ok = ProviderManager.shared?.removeIntegration(for: state.activeSession) ?? false
         let alert = NSAlert()
         if ok {
-            alert.messageText = "Integration Removed"
-            alert.informativeText = "\(provider.integrationTitle.capitalized) removed. Other \(provider.displayName) settings were preserved when possible."
+            alert.messageText = "Disconnected"
+            alert.informativeText = "\(provider.displayName) connection removed. Your other settings were kept."
         } else {
             alert.alertStyle = .warning
-            alert.messageText = "Could Not Remove Integration"
-            alert.informativeText = "Failed to update \(provider.settingsPath ?? "the provider configuration"). Check file permissions."
+            alert.messageText = "Couldn't Disconnect"
+            alert.informativeText = "Couldn't update \(provider.settingsPath ?? "the config file"). Check file permissions."
         }
         alert.runModal()
     }

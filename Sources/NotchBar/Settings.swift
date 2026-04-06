@@ -139,7 +139,7 @@ struct SettingsView: View {
     var pluginLibrary: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Header
-            Text("Enable the coding assistants you use. Disabled plugins use zero resources.")
+            Text("Turn on the tools you use. Disabled ones don't use any resources.")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
 
@@ -173,7 +173,7 @@ struct SettingsView: View {
                         Toggle(isOn: $settings.showContextWindow) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Context window usage").font(.system(size: 13))
-                                captionText("Show real token consumption. When off, shows activity state.")
+                                captionText("Shows how much of the context window is used. Off = just shows activity.")
                             }
                         }
                     }
@@ -181,7 +181,7 @@ struct SettingsView: View {
                         Toggle(isOn: $settings.showContextWarning) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Context limit warning").font(.system(size: 13))
-                                captionText("Banner when context exceeds threshold.")
+                                captionText("Heads-up when context is getting full.")
                             }
                         }
                     }
@@ -206,7 +206,7 @@ struct SettingsView: View {
                     Toggle(isOn: $settings.compactMode) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Compact mode").font(.system(size: 13))
-                            captionText("Tighter spacing to fit more in the panel.")
+                            captionText("Squeeze more into the panel.")
                         }
                     }
                 }
@@ -262,7 +262,7 @@ struct SettingsView: View {
                         Toggle(isOn: $settings.showCostTracking) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Show cost estimates").font(.system(size: 13))
-                                captionText("For API key users. Disable for Max/Pro plans.")
+                                captionText("Useful for API key users. Skip if you're on Max or Pro.")
                             }
                         }
                     }
@@ -295,7 +295,7 @@ struct SettingsView: View {
                             .frame(width: 100)
                         }
                     }
-                    captionText("How often NotchBar reads transcripts for token usage and reasoning updates.")
+                    captionText("How often NotchBar checks for new activity. Lower = more responsive.")
                         .padding(.horizontal, 12).padding(.bottom, 4)
                 }
             }
@@ -433,13 +433,13 @@ struct PluginCard: View {
                             Circle()
                                 .fill(integrationInstalled ? Color.green : Color.orange)
                                 .frame(width: 5, height: 5)
-                            Text(integrationInstalled ? "Installed" : "Not installed")
+                            Text(integrationInstalled ? "Connected" : "Not connected")
                                 .font(.system(size: 10, weight: .medium))
                                 .foregroundColor(integrationInstalled ? .green : .orange)
                         }
 
                         if !integrationInstalled {
-                            Button("Install") {
+                            Button("Connect") {
                                 _ = ProviderManager.shared?.controller(for: descriptor.id)?.installIntegration()
                             }
                             .font(.system(size: 10, weight: .semibold))
@@ -627,7 +627,7 @@ struct PluginCard: View {
 
     private func integrationSection(path: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Integration", systemImage: "link")
+            Label("Connection", systemImage: "link")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(.primary.opacity(0.7))
 
@@ -636,7 +636,7 @@ struct PluginCard: View {
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.secondary)
                 Spacer()
-                Button(integrationInstalled ? "Reinstall" : "Install") {
+                Button(integrationInstalled ? "Reconnect" : "Connect") {
                     _ = ProviderManager.shared?.controller(for: descriptor.id)?.installIntegration()
                 }
                 .font(.system(size: 11, weight: .medium))

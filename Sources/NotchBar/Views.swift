@@ -92,15 +92,19 @@ struct ExpandedViewV2: View {
                     queueCount: state.sessions.reduce(0) { $0 + $1.pendingApprovals.count },
                     onDeny: {
                         ProviderManager.shared?.reject(requestId: approval.requestId, session: session)
+                        collapseIfNoMoreApprovals()
                     },
                     onAllowOnce: {
                         ProviderManager.shared?.approve(requestId: approval.requestId, session: session)
+                        collapseIfNoMoreApprovals()
                     },
                     onAllowAll: {
                         ProviderManager.shared?.allowAll(requestId: approval.requestId, toolName: approval.toolName, session: session)
+                        collapseIfNoMoreApprovals()
                     },
                     onBypass: {
                         ProviderManager.shared?.bypass(requestId: approval.requestId, session: session)
+                        collapseIfNoMoreApprovals()
                     }
                 )
             } else if state.sessions.isEmpty {
@@ -120,6 +124,17 @@ struct ExpandedViewV2: View {
                 }
 
             }
+        }
+    }
+
+    // MARK: - Helpers
+
+    /// Collapse the panel after an approval action if no more approvals are queued
+    private func collapseIfNoMoreApprovals() {
+        // Small delay so the approval removal is processed first
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            let remaining = state.sessions.reduce(0) { $0 + $1.pendingApprovals.count }
+            if remaining <= 1 { onCollapse() }
         }
     }
 
@@ -143,9 +158,9 @@ struct ExpandedViewV2: View {
             NewSessionHeaderButton()
 
             Button(action: onCollapse) {
-                Image(systemName: "chevron.compact.up")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.5))
+                MatrixChevronUp()
+                    .stroke(.white.opacity(0.5), lineWidth: 1.5)
+                    .frame(width: 14, height: 14)
                     .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
             }.buttonStyle(.plain)

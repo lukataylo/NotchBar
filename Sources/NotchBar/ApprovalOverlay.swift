@@ -343,12 +343,20 @@ struct ApprovalOverlay: View {
                 withAnimation(.easeInOut(duration: 0.15)) { showAdvanced.toggle() }
             } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: showAdvanced ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 8, weight: .bold))
+                    Group {
+                        if showAdvanced {
+                            MatrixChevronUp()
+                                .stroke(.white.opacity(0.3), lineWidth: 1.5)
+                        } else {
+                            MatrixChevronDown()
+                                .stroke(.white.opacity(0.3), lineWidth: 1.5)
+                        }
+                    }
+                    .frame(width: 8, height: 8)
                     Text("More options")
                         .font(.matrix(10))
+                        .foregroundColor(.white.opacity(0.3))
                 }
-                .foregroundColor(.white.opacity(0.3))
             }
             .buttonStyle(.plain)
 
