@@ -40,13 +40,21 @@ final class CodexProvider: AgentProviderController {
     }
 
     func start() {
-        detectRunningSessions()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: AppSettings.shared.transcriptPollInterval, repeats: true) { [weak self] _ in
+        DispatchQueue.global(qos: .utility).async { [weak self] in
             self?.detectRunningSessions()
+        }
+        pollTimer = Timer.scheduledTimer(withTimeInterval: AppSettings.shared.transcriptPollInterval, repeats: true) { [weak self] _ in
+            // Transcript polling touches @Published properties — keep on main.
+            // Detection runs heavy I/O so dispatch off main.
             self?.pollSessions()
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                self?.detectRunningSessions()
+            }
         }
         sessionLifecycleTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
-            self?.checkSessionLifecycle()
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                self?.checkSessionLifecycle()
+            }
         }
     }
 
@@ -137,47 +145,60 @@ model_reasoning_effort = "medium"
         }
     }
 
+    /// Detect running codex processes and create/update sessions.
+    /// Called from a background thread — dispatches UI mutations to main.
     private func detectRunningSessions() {
         let pids = Shell.pgrep(descriptor.executableName)
         guard !pids.isEmpty else { return }
 
-        let latestByPath = latestSessionFilesByProjectPath()
+        // Heavy I/O: resolve CWDs and scan session files on background thread
+        var discovered: [(pid: Int32, cwd: String, name: String)] = []
         for pid in pids {
             guard let cwd = Shell.cwd(for: pid),
                   cwd.hasPrefix("/Users/"),
                   !cwd.contains("/Library/"),
                   cwd.components(separatedBy: "/").count >= 4 else { continue }
             let projectName = (cwd as NSString).lastPathComponent
-            let existing = existingSession(for: cwd)
-            let session = existing ?? AgentSession(name: projectName, projectPath: cwd, providerID: .codex)
+            discovered.append((pid: pid, cwd: cwd, name: projectName))
+        }
+        guard !discovered.isEmpty else { return }
 
-            if existing == nil {
+        let latestByPath = latestSessionFilesByProjectPath()
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            for item in discovered {
+                let existing = self.existingSession(for: item.cwd)
+                let session = existing ?? AgentSession(name: item.name, projectPath: item.cwd, providerID: .codex)
+
+                if existing == nil {
+                    session.isActive = true
+                    session.statusMessage = "Connected"
+                    session.startedAt = Date()
+                    session.pid = item.pid
+                    self.state.sessions.append(session)
+                }
+
+                session.pid = item.pid
                 session.isActive = true
-                session.statusMessage = "Connected"
-                session.startedAt = Date()
-                session.pid = pid
-                state.sessions.append(session)
-            }
+                session.isCompleted = false
 
-            session.pid = pid
-            session.isActive = true
-            session.isCompleted = false
+                if session.instructionsContent == nil {
+                    self.readInstructions(for: session)
+                }
 
-            if session.instructionsContent == nil {
-                readInstructions(for: session)
-            }
-
-            if let sessionFile = latestByPath[cwd] {
-                knownSessionFiles[cwd] = sessionFile
-                if session.transcriptPath != sessionFile.path {
-                    session.transcriptPath = sessionFile.path
-                    session.transcriptReader = CodexTranscriptReader(path: sessionFile.path)
+                if let sessionFile = latestByPath[item.cwd] {
+                    self.knownSessionFiles[item.cwd] = sessionFile
+                    if session.transcriptPath != sessionFile.path {
+                        session.transcriptPath = sessionFile.path
+                        session.transcriptReader = CodexTranscriptReader(path: sessionFile.path)
+                    }
                 }
             }
-        }
 
-        if state.activeSession == nil && !state.sessions.isEmpty {
-            state.activeSessionIndex = 0
+            if self.state.activeSession == nil && !self.state.sessions.isEmpty {
+                self.state.activeSessionIndex = 0
+            }
         }
     }
 
@@ -270,18 +291,24 @@ model_reasoning_effort = "medium"
         state.sessions.first { $0.projectPath == projectPath && $0.providerID == .codex }
     }
 
+    /// Called from background thread — pgrep is I/O, then dispatches UI changes to main.
     private func checkSessionLifecycle() {
         let activePids = Set(Shell.pgrep(descriptor.executableName))
-        for session in state.sessions where session.providerID == .codex && session.isActive {
-            if let pid = session.pid, !activePids.contains(pid) {
-                session.isCompleted = true
-                session.isActive = false
-                session.isWaitingForUser = false
-                session.progress = 1.0
-                session.statusMessage = "Completed"
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            var changed = false
+            for session in self.state.sessions where session.providerID == .codex && session.isActive {
+                if let pid = session.pid, !activePids.contains(pid) {
+                    session.isCompleted = true
+                    session.isActive = false
+                    session.isWaitingForUser = false
+                    session.progress = 1.0
+                    session.statusMessage = "Completed"
+                    changed = true
+                }
             }
+            if changed { self.state.objectWillChange.send() }
         }
-        state.objectWillChange.send()
     }
 
     private func latestSessionFilesByProjectPath() -> [String: URL] {

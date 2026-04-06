@@ -147,9 +147,8 @@ final class BuildMonitorProvider: AgentProviderController {
             if !alive {
                 guard let build = trackedPids.removeValue(forKey: pid) else { continue }
 
-                // Try to get exit code via wait status (best effort)
+                // We cannot reliably recover exit status for unrelated processes after they exit.
                 let exitCode = exitCodeForPid(pid)
-                let success = exitCode == 0
 
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self,
@@ -158,14 +157,19 @@ final class BuildMonitorProvider: AgentProviderController {
                     session.isActive = false
                     session.isCompleted = true
                     session.progress = 1.0
-                    session.statusMessage = success ? "Build succeeded" : "Build failed"
+                    session.statusMessage = exitCode.map { $0 == 0 ? "Build succeeded" : "Build failed" } ?? "Build finished"
 
                     if let idx = session.tasks.lastIndex(where: { $0.status == .running }) {
-                        session.tasks[idx].status = success ? .completed : .rejected
-                        session.tasks[idx].detail = exitCode.map { "exit \($0)" }
+                        if let exitCode {
+                            session.tasks[idx].status = exitCode == 0 ? .completed : .rejected
+                            session.tasks[idx].detail = "exit \(exitCode)"
+                        } else {
+                            session.tasks[idx].status = .completed
+                            session.tasks[idx].detail = "exit status unavailable"
+                        }
                     }
 
-                    buildLog.info("Build finished: \(build.command) pid=\(pid) success=\(success)")
+                    buildLog.info("Build finished: \(build.command) pid=\(pid) exit=\(exitCode.map(String.init) ?? "unknown")")
                     self.state.objectWillChange.send()
                 }
             }
@@ -173,9 +177,8 @@ final class BuildMonitorProvider: AgentProviderController {
     }
 
     private func exitCodeForPid(_ pid: Int32) -> Int? {
-        // ps shows empty for terminated processes; we can't reliably get exit code
-        // after the process is gone. Return 0 as default (optimistic).
-        // In the future we could use a kevent/dispatch source to capture the real exit.
-        return 0
+        // We are not the parent process, so the exit status is not available here.
+        // Returning nil keeps the UI from incorrectly claiming success.
+        return nil
     }
 }

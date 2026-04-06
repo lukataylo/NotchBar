@@ -48,9 +48,14 @@ class SocketServer {
             close(testFD)
             if connected {
                 log.warning("Another NotchBar instance is already listening on the socket")
+                return
             }
         }
         unlink(socketPath)
+
+        // Ensure socket directory exists
+        let socketDir = (socketPath as NSString).deletingLastPathComponent
+        try? FileManager.default.createDirectory(atPath: socketDir, withIntermediateDirectories: true)
 
         // Create socket
         listenFD = socket(AF_UNIX, SOCK_STREAM, 0)
@@ -154,9 +159,11 @@ class SocketServer {
 
         let hookType = event.hookType ?? event.hookEventName?.lowercased() ?? ""
 
-        // For post-tool-use, no response needed — just process the event
+        // For post-tool-use, process the event and send a short ack so the client closes cleanly
         if hookType != "pre-tool-use" && hookType != "pretooluse" {
             onEvent?(event, hookType, { _ in })
+            let ack = "{\"ok\":true}\n"
+            _ = ack.withCString { ptr in write(fd, ptr, ack.utf8.count) }
             return
         }
 
@@ -175,20 +182,23 @@ class SocketServer {
             semaphore.signal()
         }
 
-        // Wait for response — timeout matches approval setting (default 5 min)
-        let timeoutMinutes = max(AppSettings.shared.approvalTimeoutMinutes, 1)
-        let timeout = DispatchTime.now() + .seconds(timeoutMinutes * 60)
-        if semaphore.wait(timeout: timeout) == .timedOut {
-            lock.lock()
-            if !responded {
-                responded = true
-                responseJSON = "{\"decision\":\"approve\"}"
-                lock.unlock()
-                log.warning("Approval timed out after \(timeoutMinutes)min, auto-approving")
-                onTimeout?(event)
-            } else {
-                lock.unlock()
-                // Callback beat us — responseJSON already set
+        let timeoutMinutes = AppSettings.shared.approvalTimeoutMinutes
+        if timeoutMinutes <= 0 {
+            semaphore.wait()
+        } else {
+            let timeout = DispatchTime.now() + .seconds(timeoutMinutes * 60)
+            if semaphore.wait(timeout: timeout) == .timedOut {
+                lock.lock()
+                if !responded {
+                    responded = true
+                    responseJSON = "{\"decision\":\"approve\"}"
+                    lock.unlock()
+                    log.warning("Approval timed out after \(timeoutMinutes)min, auto-approving")
+                    onTimeout?(event)
+                } else {
+                    lock.unlock()
+                    // Callback beat us — responseJSON already set
+                }
             }
         }
 

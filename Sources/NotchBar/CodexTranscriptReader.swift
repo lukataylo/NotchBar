@@ -58,11 +58,14 @@ final class CodexTranscriptReader: LiveTranscriptReader {
         return entries
     }
 
+    /// Read session metadata from just the first few KB of a JSONL file.
+    /// The session_meta line is always first, so no need to read the whole file.
     static func readSessionMetadata(from path: String) -> Metadata? {
         guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
         defer { handle.closeFile() }
 
-        let data = handle.readDataToEndOfFile()
+        // Only read the first 4KB — session_meta is always the first line
+        let data = handle.readData(ofLength: 4096)
         guard let text = String(data: data, encoding: .utf8) else { return nil }
 
         for line in text.components(separatedBy: "\n") where !line.isEmpty {

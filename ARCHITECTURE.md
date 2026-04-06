@@ -6,26 +6,27 @@ NotchBar is a lightweight macOS app that turns the MacBook notch into a live das
 
 1. **Plugins, not providers** — every coding assistant is a plugin. Adding support for a new tool is one Swift file + one line of registration.
 2. **Capability-driven UI** — the UI never checks "is this Claude?" It asks "does this plugin support live approvals?" and degrades gracefully.
-3. **Zero dependencies** — pure Swift + Apple frameworks. No package manager, no node_modules, no build complexity.
+3. **Minimal dependencies** — pure Swift + Apple frameworks + SwiftTerm for embedded terminal. No node_modules, no build complexity.
 
 ## Layers
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    App Shell                         │
-│  Infrastructure · Views · CardStack · Timeline       │
-│  ApprovalOverlay · Settings · Components · Shapes    │
-├─────────────────────────────────────────────────────┤
-│              Plugin System                           │
-│  ProviderCore · PluginRegistry · ProviderManager     │
-├──────────┬──────────┬──────────┬──────────┬─────────┤
-│  Claude  │  Codex   │  Cursor  │  Build   │  Test   │
-│  Code    │          │          │  Monitor │  Runner  │
-├──────────┴──────────┴──────────┴──────────┴─────────┤
-│                  Shared Utilities                     │
-│  Shell · GitIntegration · SocketServer               │
-│  TranscriptReader · TerminalHelper · UpdateChecker   │
-└─────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                       App Shell                              │
+│  Infrastructure · Views · CardStack · Timeline               │
+│  ApprovalOverlay · Settings · Components · Shapes            │
+├─────────────────────────────────────────────────────────────┤
+│                     Plugin System                            │
+│  ProviderCore · PluginRegistry · ProviderManager             │
+├────────┬────────┬────────┬────────┬────────┬────────┬───────┤
+│Embedded│ Claude │ Codex  │ Cursor │ Build  │  Test  │Conflict│
+│Terminal│  Code  │        │        │Monitor │ Runner │Detector│
+├────────┴────────┴────────┴────────┴────────┴────────┴───────┤
+│                    Shared Services                            │
+│  Shell · HookManager · SocketServer · CoordinationEngine     │
+│  GitIntegration · TranscriptReader · PTYSessionManager       │
+│  TerminalHelper · FileWatcher · UpdateChecker                │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ### App Shell

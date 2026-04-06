@@ -62,8 +62,22 @@ enum TerminalHelper {
         """
         var iTermError: NSDictionary?
         NSAppleScript(source: iTermScript)?.executeAndReturnError(&iTermError)
-        if iTermError != nil {
-            termLog.warning("Both Terminal.app and iTerm2 failed for sendInput")
+        if iTermError == nil { return }
+
+        // Try Warp — uses keystroke approach like Terminal.app
+        let warpScript = """
+        tell application "Warp"
+            activate
+            tell application "System Events" to tell process "Warp"
+                keystroke "\(escaped)"
+                keystroke return
+            end tell
+        end tell
+        """
+        var warpError: NSDictionary?
+        NSAppleScript(source: warpScript)?.executeAndReturnError(&warpError)
+        if warpError != nil {
+            termLog.warning("Terminal.app, iTerm2, and Warp all failed for sendInput")
         }
     }
 
@@ -94,8 +108,22 @@ enum TerminalHelper {
         """
         var iTermError2: NSDictionary?
         NSAppleScript(source: iTermScript)?.executeAndReturnError(&iTermError2)
-        if iTermError2 != nil {
-            termLog.warning("Both Terminal.app and iTerm2 failed for runCommand")
+        if iTermError2 == nil { return }
+
+        // Try Warp
+        let warpScript = """
+        tell application "Warp"
+            activate
+            tell application "System Events" to tell process "Warp"
+                keystroke "\(escaped)"
+                keystroke return
+            end tell
+        end tell
+        """
+        var warpError: NSDictionary?
+        NSAppleScript(source: warpScript)?.executeAndReturnError(&warpError)
+        if warpError != nil {
+            termLog.warning("Terminal.app, iTerm2, and Warp all failed for runCommand")
         }
     }
 }

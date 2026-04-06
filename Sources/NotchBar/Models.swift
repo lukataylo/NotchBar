@@ -150,7 +150,7 @@ enum SessionState: Int, Comparable {
         case .waitingForUser: return "questionmark.circle.fill"
         case .needsApproval:  return "exclamationmark.shield.fill"
         case .completed:      return "checkmark.circle.fill"
-        case .idle:           return "circle"
+        case .idle:           return "moon.zzz"
         }
     }
 
@@ -230,6 +230,8 @@ class AgentSession: Identifiable, ObservableObject {
     /// The next approval that needs attention (first in queue)
     var pendingApproval: PendingApproval? { pendingApprovals.first }
     @Published var terminalAvailable: Bool = false
+    /// Holds the embedded SwiftTerm terminal view when this session was launched via PTY.
+    var embeddedTerminalView: NSView? = nil
     @Published var isPinned: Bool = false
     @Published var autoApproveAll: Bool = false
     @Published var lastToolActivityAt: Date? = nil
@@ -290,7 +292,9 @@ class AgentSession: Identifiable, ObservableObject {
     var contextSummary: String {
         let total = inputTokens + outputTokens
         guard total > 0 else { return "" }
-        return "\(formatTokens(total)) / \(formatTokens(contextWindowSize))"
+        // Cap display at window size — cumulative tokens can exceed the window after compaction
+        let displayTotal = min(total, contextWindowSize)
+        return "\(formatTokens(displayTotal)) / \(formatTokens(contextWindowSize))"
     }
 
     // MARK: - Stale Detection
@@ -385,6 +389,41 @@ class NotchState: ObservableObject {
         expandedCardIndex = index
         activeSessionIndex = index
         lastManualSelectTime = Date()
+    }
+
+    func removeSession(_ session: AgentSession) {
+        guard let idx = sessions.firstIndex(where: { $0.id == session.id }) else { return }
+        sessions.remove(at: idx)
+        normalizeSelectionAfterSessionMutation(removedIndices: [idx])
+    }
+
+    func removeSessions(for providerID: ProviderID) {
+        let removedIndices = sessions.enumerated().compactMap { index, session in
+            session.providerID == providerID ? index : nil
+        }
+        guard !removedIndices.isEmpty else { return }
+
+        sessions.removeAll { $0.providerID == providerID }
+        normalizeSelectionAfterSessionMutation(removedIndices: removedIndices)
+    }
+
+    private func normalizeSelectionAfterSessionMutation(removedIndices: [Int]) {
+        if sessions.isEmpty {
+            activeSessionIndex = 0
+            expandedCardIndex = nil
+        } else {
+            activeSessionIndex = min(activeSessionIndex, sessions.count - 1)
+            if let expanded = expandedCardIndex {
+                if removedIndices.contains(expanded) {
+                    expandedCardIndex = nil
+                } else {
+                    let removedBeforeExpanded = removedIndices.filter { $0 < expanded }.count
+                    if removedBeforeExpanded > 0 {
+                        expandedCardIndex = expanded - removedBeforeExpanded
+                    }
+                }
+            }
+        }
     }
 
     func reset() {

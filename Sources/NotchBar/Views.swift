@@ -18,41 +18,43 @@ struct CollapsedView: View {
             if state.hasActiveWork, let session = state.activeSession {
                 if session.pendingApproval != nil {
                     Text("Approve?")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.matrix(10, weight: .bold))
                         .foregroundColor(.white)
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(brandOrange)
                         .cornerRadius(4)
                 } else if session.isWaitingForUser {
                     Text("Waiting for you")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.matrix(10, weight: .semibold))
                         .foregroundColor(brandOrange).lineLimit(1)
                 } else if session.isCompleted {
                     Text("Completed" + (AppSettings.shared.showCostTracking ? " \(session.costSummary)" : ""))
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.matrix(10, weight: .medium))
                         .foregroundColor(brandSuccess).lineLimit(1)
                 } else if session.isStale {
                     Text("Idle \(session.staleDuration)")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.matrix(10, weight: .medium))
                         .foregroundColor(.white.opacity(0.35)).lineLimit(1)
                 } else {
                     Text(session.statusMessage)
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.matrix(10, weight: .medium))
                         .foregroundColor(.white.opacity(0.65)).lineLimit(1)
                 }
 
                 if state.sessions.count > 1 {
-                    HStack(spacing: 3) {
+                    HStack(spacing: 2) {
                         ForEach(Array(state.sessions.enumerated()), id: \.1.id) { idx, s in
-                            Circle().fill(idx == state.activeSessionIndex ? .white : progressColor(s).opacity(0.5))
-                                .frame(width: 3.5, height: 3.5)
+                            let isActive = idx == state.activeSessionIndex
+                            RoundedRectangle(cornerRadius: 1.5)
+                                .fill(s.sessionState.stateColor.opacity(isActive ? 1.0 : 0.45))
+                                .frame(width: isActive ? 10 : 6, height: 3)
                         }
                     }.padding(.leading, 4)
                 }
 
                 Spacer(minLength: 8)
 
-                ProgressRing(progress: ringProgress(for: session), size: hasNotch ? 16 : 14, lineWidth: 2, color: ringColor(for: session))
+                SessionStateIcon(state: session.sessionState, size: hasNotch ? 14 : 12)
                     .fixedSize()
                     .padding(.trailing, hasNotch ? 26 : 14)
             } else {
@@ -104,6 +106,9 @@ struct ExpandedViewV2: View {
             } else if state.sessions.isEmpty {
                 EmptySessionView()
             } else {
+                // Conflict banner (shown above cards when conflicts exist)
+                ConflictBanner(coordination: CoordinationEngine.shared)
+
                 // Normal card stack
                 ScrollView(.vertical, showsIndicators: false) {
                     SessionCardStack(
@@ -130,9 +135,11 @@ struct ExpandedViewV2: View {
 
             if state.sessions.count > 1 {
                 Text("\(state.sessions.count) sessions")
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .font(.matrixMono(9, weight: .medium))
                     .foregroundColor(.white.opacity(0.3))
             }
+
+            NewSessionHeaderButton()
 
             Button(action: onCollapse) {
                 Image(systemName: "chevron.compact.up")
