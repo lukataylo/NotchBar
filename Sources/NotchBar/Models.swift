@@ -150,7 +150,7 @@ enum SessionState: Int, Comparable {
         case .waitingForUser: return "questionmark.circle.fill"
         case .needsApproval:  return "exclamationmark.shield.fill"
         case .completed:      return "checkmark.circle.fill"
-        case .idle:           return "circle"
+        case .idle:           return "moon.zzz"
         }
     }
 
@@ -385,6 +385,25 @@ class NotchState: ObservableObject {
         expandedCardIndex = index
         activeSessionIndex = index
         lastManualSelectTime = Date()
+    }
+
+    func removeSession(_ session: AgentSession) {
+        guard let idx = sessions.firstIndex(where: { $0.id == session.id }) else { return }
+        sessions.remove(at: idx)
+        // Adjust indices after removal
+        if sessions.isEmpty {
+            activeSessionIndex = 0
+            expandedCardIndex = nil
+        } else {
+            activeSessionIndex = min(activeSessionIndex, sessions.count - 1)
+            if let expanded = expandedCardIndex {
+                if expanded == idx {
+                    expandedCardIndex = nil
+                } else if expanded > idx {
+                    expandedCardIndex = expanded - 1
+                }
+            }
+        }
     }
 
     func reset() {

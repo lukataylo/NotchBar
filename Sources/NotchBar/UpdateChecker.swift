@@ -5,7 +5,7 @@ private let log = Logger(subsystem: "com.notchbar", category: "update")
 
 class UpdateChecker {
     static let shared = UpdateChecker()
-    static let currentVersion = "0.1.0"
+    static let currentVersion = "0.5.0"
     private let repoOwner = "lukataylo"
     private let repoName = "NotchBar"
 

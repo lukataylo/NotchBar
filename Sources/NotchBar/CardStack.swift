@@ -13,10 +13,14 @@ struct SessionCardStack: View {
                     SessionCardExpanded(session: session, state: state, onCollapse: {
                         // Collapsing auto-selects next most urgent
                         state.expandedCardIndex = nil
+                    }, onClose: {
+                        state.removeSession(session)
                     })
                 } else {
                     SessionCardCollapsed(session: session, onTap: {
                         state.selectCard(idx)
+                    }, onClose: {
+                        state.removeSession(session)
                     })
                 }
             }
@@ -29,8 +33,10 @@ struct SessionCardStack: View {
 struct SessionCardCollapsed: View {
     @ObservedObject var session: ClaudeSession
     let onTap: () -> Void
+    var onClose: (() -> Void)? = nil
 
     @State private var hovering = false
+    @State private var closeHovering = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -56,9 +62,23 @@ struct SessionCardCollapsed: View {
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundColor(.white.opacity(0.25))
 
-            Image(systemName: "chevron.right")
-                .font(.system(size: 8))
-                .foregroundColor(.white.opacity(hovering ? 0.4 : 0.15))
+            if hovering, let onClose = onClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(closeHovering ? .white.opacity(0.8) : .white.opacity(0.3))
+                        .frame(width: 16, height: 16)
+                        .background(closeHovering ? Color.white.opacity(0.1) : Color.clear)
+                        .cornerRadius(4)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .onHover { closeHovering = $0 }
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8))
+                    .foregroundColor(.white.opacity(hovering ? 0.4 : 0.15))
+            }
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
         .background(hovering ? Color.white.opacity(0.05) : Color.clear)
@@ -92,6 +112,7 @@ struct SessionCardExpanded: View {
     @ObservedObject var session: ClaudeSession
     @ObservedObject var state: NotchState
     var onCollapse: () -> Void
+    var onClose: (() -> Void)? = nil
 
     @State private var messageText: String = ""
     @State private var nameHovering: Bool = false
@@ -196,6 +217,17 @@ struct SessionCardExpanded: View {
                         }
                     }
                 )
+
+            if let onClose = onClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.35))
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
 
             if state.sessions.count > 1 {
                 Button(action: onCollapse) {
