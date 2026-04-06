@@ -148,9 +148,10 @@ model_reasoning_effort = "medium"
                   !cwd.contains("/Library/"),
                   cwd.components(separatedBy: "/").count >= 4 else { continue }
             let projectName = (cwd as NSString).lastPathComponent
-            let session = existingSession(for: cwd) ?? AgentSession(name: projectName, projectPath: cwd, providerID: .codex)
+            let existing = existingSession(for: cwd)
+            let session = existing ?? AgentSession(name: projectName, projectPath: cwd, providerID: .codex)
 
-            if existingSession(for: cwd) == nil {
+            if existing == nil {
                 session.isActive = true
                 session.statusMessage = "Connected"
                 session.startedAt = Date()

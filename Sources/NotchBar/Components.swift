@@ -151,7 +151,6 @@ struct ColorRail: View {
                     let isPulsing = state == .waitingForUser || state == .needsApproval
                     RoundedRectangle(cornerRadius: 2)
                         .fill(state.stateColor)
-                        .opacity(isPulsing ? 1.0 : 1.0)
                         .overlay(alignment: .trailing) {
                             if idx == expandedIndex {
                                 Rectangle()

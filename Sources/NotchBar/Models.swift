@@ -381,6 +381,7 @@ class NotchState: ObservableObject {
     }
 
     func selectCard(_ index: Int) {
+        guard sessions.indices.contains(index) else { return }
         expandedCardIndex = index
         activeSessionIndex = index
         lastManualSelectTime = Date()

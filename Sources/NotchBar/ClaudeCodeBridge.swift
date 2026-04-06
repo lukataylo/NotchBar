@@ -120,30 +120,16 @@ class ClaudeCodeBridge: AgentProviderController {
 
     private let lock = NSLock()
     private var _sessionMap: [String: UUID] = [:]
-    private var _toolCounts: [String: Int] = [:]
     private var _runningTools: [String: (sessionUUID: UUID, taskTitle: String)] = [:]
 
-    // Thread-safe accessors
-    var sessionMap: [String: UUID] {
-        get { lock.lock(); defer { lock.unlock() }; return _sessionMap }
-        set { lock.lock(); defer { lock.unlock() }; _sessionMap = newValue }
+    private func withLock<T>(_ block: () -> T) -> T {
+        lock.lock(); defer { lock.unlock() }; return block()
     }
-    func sessionMapValue(for key: String) -> UUID? {
-        lock.lock(); defer { lock.unlock() }; return _sessionMap[key]
-    }
-    func setSessionMap(_ value: UUID, for key: String) {
-        lock.lock(); defer { lock.unlock() }; _sessionMap[key] = value
-    }
-    func incrementToolCount(for key: String) {
-        lock.lock(); defer { lock.unlock() }; _toolCounts[key, default: 0] += 1
-    }
-    func setRunningTool(_ value: (sessionUUID: UUID, taskTitle: String)?, for key: String) {
-        lock.lock(); defer { lock.unlock() }
-        if let value { _runningTools[key] = value } else { _runningTools.removeValue(forKey: key) }
-    }
-    func removeRunningTool(for key: String) -> (sessionUUID: UUID, taskTitle: String)? {
-        lock.lock(); defer { lock.unlock() }; return _runningTools.removeValue(forKey: key)
-    }
+
+    func sessionMapValue(for key: String) -> UUID? { withLock { _sessionMap[key] } }
+    func setSessionMap(_ value: UUID, for key: String) { withLock { _sessionMap[key] = value } }
+    func setRunningTool(_ value: (sessionUUID: UUID, taskTitle: String), for key: String) { withLock { _runningTools[key] = value } }
+    func removeRunningTool(for key: String) -> (sessionUUID: UUID, taskTitle: String)? { withLock { _runningTools.removeValue(forKey: key) } }
 
     var transcriptTimer: Timer?
     var sessionLifecycleTimer: Timer?
@@ -363,7 +349,7 @@ class ClaudeCodeBridge: AgentProviderController {
             // Try to find PID and detect terminal
             DispatchQueue.global(qos: .utility).async {
                 for pid in Shell.pgrep("claude") {
-                    if Shell.cwd(for: pid) == cwd {
+                    if let pidCwd = Shell.cwd(for: pid), pidCwd == cwd {
                         DispatchQueue.main.async {
                             s.pid = pid
                             s.terminalAvailable = Shell.isRunningInTerminal(pid: pid)
@@ -447,7 +433,6 @@ class ClaudeCodeBridge: AgentProviderController {
 
         case "post-tool-use", "posttooluse":
             let desc = event.toolDescription
-            incrementToolCount(for: sessionId)
 
             let detail: String?
             if let r = event.toolResponse {
@@ -558,6 +543,7 @@ class ClaudeCodeBridge: AgentProviderController {
                         changed = true
                     }
                 case .usage(let input, let output):
+                    let prevCost = session.estimatedCost
                     session.inputTokens = input
                     session.outputTokens = output
                     session.updateCost()
@@ -565,7 +551,7 @@ class ClaudeCodeBridge: AgentProviderController {
 
                     if AppSettings.shared.showCostTracking {
                         let threshold = AppSettings.shared.costAlertThreshold
-                        if session.estimatedCost >= threshold && (session.estimatedCost - ModelPricing.estimate(provider: session.providerID, model: session.modelName, inputTokens: input, outputTokens: 0)) < threshold {
+                        if session.estimatedCost >= threshold && prevCost < threshold {
                             sendNotification(title: "Cost Alert", body: "\(session.name) has exceeded \(String(format: "$%.2f", threshold))")
                         }
                     }

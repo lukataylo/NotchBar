@@ -56,6 +56,10 @@ class MultiScreenManager {
 
     init(state: NotchState) { self.state = state }
 
+    deinit {
+        if let monitor = clickMonitor { NSEvent.removeMonitor(monitor) }
+    }
+
     func setup() {
         refreshScreens()
         NotificationCenter.default.addObserver(
