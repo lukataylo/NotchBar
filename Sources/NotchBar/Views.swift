@@ -36,7 +36,7 @@ struct CollapsedView: View {
                         .font(.matrix(10, weight: .medium))
                         .foregroundColor(.white.opacity(0.35)).lineLimit(1)
                 } else {
-                    Text(session.statusMessage)
+                    Text(AppSettings.shared.showTimeline ? session.statusMessage : session.sessionState.label)
                         .font(.matrix(10, weight: .medium))
                         .foregroundColor(.white.opacity(0.65)).lineLimit(1)
                 }
@@ -158,9 +158,9 @@ struct ExpandedViewV2: View {
             NewSessionHeaderButton()
 
             Button(action: onCollapse) {
-                MatrixChevronUp()
-                    .stroke(.white.opacity(0.5), lineWidth: 1.5)
-                    .frame(width: 14, height: 14)
+                MatrixDots()
+                    .fill(.white.opacity(0.4))
+                    .frame(width: 20, height: 14)
                     .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
             }.buttonStyle(.plain)

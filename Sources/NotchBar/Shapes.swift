@@ -286,6 +286,21 @@ struct MatrixTerminal: Shape {
     }
 }
 
+struct MatrixDots: Shape {
+    /// A 3-dot horizontal grip indicator, matrix style.
+    func path(in rect: CGRect) -> Path {
+        let dotR: CGFloat = min(rect.width, rect.height) * 0.12
+        let cy = rect.midY
+        let spacing = rect.width * 0.28
+        let cx = rect.midX
+        var p = Path()
+        p.addEllipse(in: CGRect(x: cx - spacing - dotR, y: cy - dotR, width: dotR * 2, height: dotR * 2))
+        p.addEllipse(in: CGRect(x: cx - dotR, y: cy - dotR, width: dotR * 2, height: dotR * 2))
+        p.addEllipse(in: CGRect(x: cx + spacing - dotR, y: cy - dotR, width: dotR * 2, height: dotR * 2))
+        return p
+    }
+}
+
 // MARK: - Notch Shape: flat top, rounded bottom corners
 
 struct NotchCollapsedShape: Shape {
