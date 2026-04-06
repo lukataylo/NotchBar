@@ -43,18 +43,22 @@ NotchBar can monitor sessions without extra permissions, but some features need 
 
 After launching, open Settings (menu bar icon > Settings, or `Cmd+,`) and go to the **Plugins** tab.
 
-Each plugin can be enabled/disabled independently. For plugins that need integration:
+Each plugin can be enabled/disabled independently. For plugins that need a connection:
 
-- **Claude Code**: Click Configure > Install to add hook entries to `~/.claude/settings.json`
-- **Codex**: Click Configure > Install to add a managed profile to `~/.codex/config.toml`
-- **Cursor, Build Monitor, Test Runner**: No setup needed — they detect running processes automatically
+- **Claude Code**: Click Configure > Connect to add hook entries to `~/.claude/settings.json`
+- **Codex** (disabled by default): Enable it first, then Configure > Connect to add a managed profile to `~/.codex/config.toml`
+- **Conflict Detector**: Click Configure > Set Up Server to install the MCP coordination server
+
+All auto-approve settings are off by default — you choose what your agent can do without asking. Your code, your rules.
 
 ## Troubleshooting
 
-**App won't open:** Right-click > Open on first launch. Check System Settings > Privacy & Security.
+**App won't open:** Right-click > Open on first launch. macOS is just being protective. Check System Settings > Privacy & Security.
 
 **Swift missing:** Install Xcode Command Line Tools: `xcode-select --install`
 
-**Approvals always auto-approve:** Make sure NotchBar is running. Check the Claude plugin's Configure panel for your approval rules.
+**Nothing happens when Claude runs:** Make sure you've connected the Claude Code plugin (Settings > Plugins > Claude Code > Configure > Connect). No connection = no party.
+
+**Approvals always auto-approve:** All auto-approve is off by default now. If you turned them on and forgot, check Settings > Plugins > Claude Code > Configure > Auto-Approve Rules.
 
 **Terminal input doesn't work:** Grant Accessibility and Automation permissions for NotchBar in macOS Privacy settings.

@@ -8,13 +8,13 @@ A breakdown of how NotchBar fits into real-world AI-assisted development workflo
 
 **Scenario:** You have one Claude Code session running a long task (refactoring a module, writing tests, migrating a codebase) while you work in another app — browser, Figma, Slack, etc.
 
-**Without NotchBar:** You constantly Cmd+Tab back to the terminal to check if Claude is still running, waiting for input, or finished. You miss approval prompts and Claude sits idle for minutes.
+**Without NotchBar:** You Cmd+Tab back to the terminal every 30 seconds like a nervous parent checking a baby monitor. You miss approval prompts and Claude sits idle for minutes, silently judging you.
 
 **With NotchBar:**
 - The notch shows a live progress ring and status text — *Running*, *Waiting*, *Completed*
 - Desktop notifications fire on completion or when Claude needs input
 - Approval hotkeys (Cmd+Shift+Y / N) let you approve tool use without leaving your current app
-- Cost and token counters keep you aware of spend in the background
+- Token and cost counters keep you aware of spend (opt-in — enable in Settings if you're on an API key)
 
 **Key value:** Never lose time to an unnoticed idle agent.
 
@@ -29,9 +29,9 @@ A breakdown of how NotchBar fits into real-world AI-assisted development workflo
 **With NotchBar:**
 - Each session appears as a separate card with its own timeline, progress, and status
 - The session picker rail (colored dots) gives instant visibility into all sessions at a glance
-- The most urgent session auto-expands (approval-needed > waiting > running > idle)
+- Sessions needing approval auto-expand — everything else stays collapsed until you ask
 - Hotkeys approve/reject the *currently focused* session's pending tool — no window switching needed
-- Collapsed view shows per-session model, token counts, cost, and duration side by side
+- Collapsed view shows per-session status at a glance
 
 **Key value:** Manage parallel agents from one place without context-switching between terminals.
 
@@ -136,15 +136,15 @@ A breakdown of how NotchBar fits into real-world AI-assisted development workflo
 **Scenario:** You just installed NotchBar and want to connect it to your existing Claude Code workflow.
 
 **Flow:**
-1. Launch NotchBar — onboarding screen appears
-2. Click "Install Integration" — NotchBar writes hook entries into `~/.claude/settings.json`
-3. A hook script is placed at `~/.notchbar/bin/notchbar-hook`
-4. Start any Claude Code session — NotchBar auto-detects it within 5 seconds
-5. Configure auto-approve preferences in Settings (Cmd+,)
+1. Launch NotchBar — onboarding walks you through it
+2. Click "Connect" — NotchBar writes hook entries into `~/.claude/settings.json`
+3. Choose what your agent can do without asking (all off by default — you're in control)
+4. Learn the shortcuts, click "Open NotchBar"
+5. Start any Claude Code session — NotchBar picks it up automatically
 
-**For Codex:** Similar flow — NotchBar installs a managed profile in `~/.codex/config.toml`.
+**For Codex:** Enable it in Settings > Plugins first (it's off by default), then Configure > Connect.
 
-**Key value:** One-click setup, non-destructive (preserves existing hooks/config).
+**Key value:** One-click setup, non-destructive (preserves existing config). The whole thing takes about 30 seconds, unless you read every tooltip like a responsible adult.
 
 ---
 
@@ -154,7 +154,7 @@ A breakdown of how NotchBar fits into real-world AI-assisted development workflo
 |----------|----------|-----------|-------------|
 | Single background terminal | 1 | Few | Never miss a prompt |
 | Multiple concurrent terminals | 2-5 | Mixed | Unified dashboard |
-| Claude + Codex | 2+ | Claude only | Cross-provider visibility |
+| Multi-provider | 2+ | Varies | Cross-provider visibility |
 | Approval-heavy | 1+ | Many | Hotkey approve from anywhere |
 | Fully auto-approved | 1+ | None | Cost/progress monitoring |
 | Interactive pair programming | 1 | Few | Visual timeline + diffs |

@@ -23,9 +23,9 @@ NotchBar is a lightweight macOS app that turns the MacBook notch into a live das
 │Terminal│  Code  │        │                                 │
 ├────────┴────────┴────────┴─────────────────────────────────┤
 │                    Shared Services                            │
-│  Shell · HookManager · SocketServer · CoordinationEngine     │
+│  Shell · SocketServer · CoordinationEngine · FileWatcher     │
 │  GitIntegration · TranscriptReader · PTYSessionManager       │
-│  TerminalHelper · FileWatcher · UpdateChecker                │
+│  TerminalHelper · SessionHistory · FontManager · Updater     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -41,7 +41,7 @@ The UI layer. Knows nothing about specific plugins.
 | `CardStack.swift` | Session cards (collapsed + expanded), card stack layout |
 | `Timeline.swift` | Task timeline with status nodes and completion markers |
 | `Components.swift` | Progress ring, diff views, dot progress, session state icons |
-| `Shapes.swift` | Notch geometry, provider icons, NotchOwl branding |
+| `Shapes.swift` | Notch geometry, provider icons, NotchOwl branding, Nothing UI dot-matrix icons |
 | `Settings.swift` | Plugin store, display settings, general settings |
 | `Onboarding.swift` | First-launch setup wizard |
 
@@ -130,7 +130,7 @@ Claude Code hook → bash → nc -U notchbar.sock → SocketServer
   → user approves → response callback fires → hook script receives JSON
 ```
 
-~9ms round-trip. Fail-open: if NotchBar isn't running, hook auto-approves.
+~9ms round-trip. Fail-open: if NotchBar isn't running, hook auto-approves. Your agent never gets stuck waiting for a dead app — that would be rude.
 
 ### Transcript Monitor (Codex)
 

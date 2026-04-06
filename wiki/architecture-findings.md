@@ -136,7 +136,6 @@ The hook script becomes 5 lines. If NotchBar isn't running, `nc -U` fails instan
 - The abstraction layers add main thread work, making the latency problem worse
 
 ### Settings Defaults
-- Changed all auto-approve defaults to `true` (was: only reads)
-- Users who want approval control can disable per-category in Settings
+- All auto-approve defaults are `false` as of v0.7.0 — users opt in to what they're comfortable with
 - Hook script bakes in the auto-approve list at generation time
 - Changing settings requires NotchBar restart to regenerate hook script

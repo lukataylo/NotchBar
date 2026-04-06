@@ -1,6 +1,6 @@
 # Contributing to NotchBar
 
-NotchBar is built for vibe coding. The entire plugin system was designed so you can add support for your favorite tool in under an hour — most of it spent deciding what icon to use.
+NotchBar is built for vibe coding. The entire plugin system was designed so you can add support for your favorite tool in under an hour — most of it spent deciding which SF Symbol best represents your emotional attachment to Vim.
 
 ## The Fastest Way to Contribute
 
@@ -118,11 +118,11 @@ Sources/NotchBar/
 
 ## Code Style
 
-- **No external dependencies.** If you need something, build it or use Apple frameworks.
-- **One file per plugin.** The plugin should be self-contained.
-- **Main thread for UI.** All `@Published` property updates must happen on `DispatchQueue.main`.
-- **Fail-open for approvals.** If NotchBar can't respond, the agent should keep working.
-- **No force unwraps.** Use optional chaining, `guard let`, or `??` defaults.
+- **One external dependency.** SwiftTerm for the embedded terminal. That's it. Every other import is an Apple framework. We like our `node_modules` like we like our notch — empty until we put something useful in it.
+- **One file per plugin.** The plugin should be self-contained. If your plugin needs a second file, it's two plugins.
+- **Main thread for UI.** All `@Published` property updates must happen on `DispatchQueue.main`. SwiftUI will find you if you don't.
+- **Fail-open for approvals.** If NotchBar can't respond, the agent should keep working. Never be the reason someone's Claude session is stuck.
+- **No force unwraps.** Use optional chaining, `guard let`, or `??` defaults. The `!` operator is for commit messages, not production code.
 - **Descriptive but short.** Functions should be obvious from their name. Comments only where the *why* isn't clear.
 
 ## Submitting a PR
@@ -143,7 +143,7 @@ For plugin PRs, include:
 
 This project was built with AI coding assistants. We encourage contributions made the same way. Use Claude Code, Cursor, Copilot, Aider — whatever makes you productive. The `/create-plugin` command in Claude Code will walk you through building a plugin step by step.
 
-If your AI assistant writes a NotchBar plugin to monitor itself, that's peak recursion and we love it.
+If your AI assistant writes a NotchBar plugin to monitor itself, that's peak recursion and we love it. If it then approves its own PRs through the notch, we should probably talk.
 
 ## License
 

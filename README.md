@@ -28,7 +28,7 @@
 
 ## What is this
 
-NotchBar turns the dead space around your MacBook notch into a live control surface for coding agents. See what your agent is doing, approve tool calls, track costs, and coordinate multiple agents — without staring at terminal output.
+NotchBar turns the dead space around your MacBook notch into a live control surface for coding agents. See what your agent is doing, approve tool calls, and coordinate multiple agents — all without alt-tabbing back to a terminal like it's 2024.
 
 ## Plugins
 
@@ -91,7 +91,7 @@ Requires macOS 13+ and Xcode Command Line Tools.
 │Terminal│  Code  │        │                                 │
 ├────────┴────────┴────────┴─────────────────────────────────┤
 │                    Shared Services                            │
-│  Shell · HookManager · SocketServer · CoordinationEngine     │
+│  Shell · SocketServer · CoordinationEngine · FileWatcher     │
 │  GitIntegration · TranscriptReader · PTYSessionManager       │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -109,15 +109,19 @@ The Conflict Detector includes an MCP server that agents can connect to for proa
 | `list_locks` | See all locked files and owners |
 | `get_context` | Overview of active sessions, locks, and stats |
 
-Install via Settings > Plugins > Conflict Detector > Configure > Install MCP Server.
+Install via Settings > Plugins > Conflict Detector > Configure > Set Up Server.
 
 ## FAQ
 
-**Does it phone home?** No. Local-first. Only checks GitHub for updates once a day.
+**Does it phone home?** No. Local-first. The only network call is checking GitHub for updates once a day, and even that's just a polite "hey, got anything new?"
 
-**External monitors?** Yes. Creates a panel on every display. No-notch screens get a pill shape.
+**External monitors?** Yes. Creates a panel on every display. No-notch screens get a pill shape. Your notch jealousy ends here.
 
-**What if NotchBar crashes?** Claude keeps working. The hook auto-approves when NotchBar is gone.
+**What if NotchBar crashes?** Claude keeps working. The hook auto-approves when NotchBar is gone. Your agent has trust issues, not dependency issues.
+
+**Do I need a MacBook with a notch?** Nope. Works on any Mac running macOS 13+. No notch = pill-shaped bar at the top of your screen. Honestly it looks better.
+
+**All auto-approve settings are off by default?** Yes. Your agent earns trust, it doesn't start with it. Enable what you're comfortable with in Settings or during onboarding.
 
 ## Contributing
 

@@ -1,8 +1,8 @@
 # Roadmap: Plugin Architecture
 
-## Status: Core Implemented
+## Status: Shipped (v0.7.0)
 
-The plugin system is live on the `plugin-architecture` branch. This document tracks what's built and what's next.
+The plugin system is live on `main`. This document tracks what's built and what's next.
 
 ## What's Built
 
@@ -47,7 +47,7 @@ The current plugin system requires plugins to be compiled into the app binary. A
 - Plugin manifest in `~/.notchbar/plugins/<name>/plugin.json`
 - Hot reload without restarting NotchBar
 
-This is the next major architectural step, but the current compiled-in approach covers the most common tools well.
+This is the next major architectural step, but the current compiled-in approach covers the most common tools well. Also, if someone writes an external plugin in Bash that monitors their Bash agent... we'll allow it.
 
 ### UI Improvements
 - Inline approval from collapsed bar (approve without expanding)
