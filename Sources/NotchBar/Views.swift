@@ -31,6 +31,10 @@ struct CollapsedView: View {
                     Text("Completed" + (AppSettings.shared.showCostTracking ? " \(session.costSummary)" : ""))
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(brandSuccess).lineLimit(1)
+                } else if session.isStale {
+                    Text("Idle \(session.staleDuration)")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.35)).lineLimit(1)
                 } else {
                     Text(session.statusMessage)
                         .font(.system(size: 10, weight: .medium))
@@ -48,7 +52,7 @@ struct CollapsedView: View {
 
                 Spacer(minLength: 8)
 
-                ProgressRing(progress: session.progress, size: hasNotch ? 16 : 14, lineWidth: 2, color: progressColor(session))
+                ProgressRing(progress: ringProgress(for: session), size: hasNotch ? 16 : 14, lineWidth: 2, color: ringColor(for: session))
                     .fixedSize()
                     .padding(.trailing, hasNotch ? 26 : 14)
             } else {
@@ -94,7 +98,8 @@ struct ExpandedViewV2: View {
     var headerSection: some View {
         HStack(spacing: 8) {
             Button(action: onCollapse) {
-                NotchBarIcon().frame(width: 20, height: 20)
+                ActiveProviderIcon(session: state.sessions.isEmpty ? nil : state.sessions[state.resolvedExpandedIndex])
+                    .frame(width: 20, height: 20)
             }.buttonStyle(.plain)
 
             Spacer()

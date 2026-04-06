@@ -94,15 +94,39 @@ struct SessionPicker: View {
         }
     }
     func dotColor(_ s: ClaudeSession) -> Color {
-        if s.progress >= 1.0 { return brandSuccess }
-        if s.isActive { return .orange }
-        return .gray
+        s.sessionState.stateColor
     }
 }
 
 func progressColor(_ s: ClaudeSession) -> Color {
-    if s.progress >= 1.0 { return brandSuccess }
-    return .orange
+    s.sessionState.stateColor
+}
+
+func contextColor(for usage: Double) -> Color {
+    if usage < 0.6 { return brandSuccess }
+    if usage < 0.8 { return .orange }
+    return .red
+}
+
+func ringProgress(for session: ClaudeSession) -> Double {
+    if AppSettings.shared.showContextWindow {
+        return session.contextUsage
+    }
+    // Activity mode: state-driven, not percentage
+    switch session.sessionState {
+    case .completed:      return 1.0
+    case .running:        return 0.3
+    case .waitingForUser: return 0.3
+    case .needsApproval:  return 0.3
+    case .idle:           return 0.0
+    }
+}
+
+func ringColor(for session: ClaudeSession) -> Color {
+    if AppSettings.shared.showContextWindow {
+        return contextColor(for: session.contextUsage)
+    }
+    return session.sessionState.stateColor
 }
 
 // MARK: - Color Rail

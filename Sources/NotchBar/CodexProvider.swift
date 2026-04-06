@@ -189,16 +189,13 @@ model_reasoning_effort = "medium"
                     session.statusMessage = status
                 case .response(let text):
                     session.lastResponse = text
-                    session.progress = min(session.progress + 0.08, 0.95)
                 case .turnStarted:
                     session.isActive = true
                     session.isCompleted = false
                     session.isWaitingForUser = false
-                    session.progress = max(session.progress, 0.05)
                     session.statusMessage = "Working"
                 case .waitingForInput:
                     session.isWaitingForUser = true
-                    session.progress = min(max(session.progress, 0.9), 0.95)
                     session.statusMessage = "Waiting for input"
                 case .taskStarted(let event):
                     session.isActive = true
@@ -210,7 +207,6 @@ model_reasoning_effort = "medium"
                     session.isActive = true
                     session.isWaitingForUser = false
                     applyTaskEvent(event, status: .completed, to: session)
-                    session.progress = min(session.progress + 0.1, 0.88)
                 case .sessionCompleted:
                     session.isCompleted = true
                     session.isActive = false

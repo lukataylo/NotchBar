@@ -32,19 +32,25 @@ struct SessionCardCollapsed: View {
 
     @State private var hovering = false
 
+    private var compact: Bool { AppSettings.shared.compactMode }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             // Primary line
             HStack(spacing: 6) {
-                SessionStateIcon(state: session.sessionState, size: 14)
+                SessionStateIcon(state: session.sessionState, size: compact ? 12 : 14)
 
                 Text(session.name)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: compact ? 10 : 11, weight: .semibold))
                     .foregroundColor(.white)
                     .lineLimit(1)
                     .frame(maxWidth: 120, alignment: .leading)
 
-                if let model = session.modelName {
+                if session.isStale {
+                    Text("Idle \(session.staleDuration)")
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundColor(.white.opacity(0.35))
+                } else if let model = session.modelName {
                     Text(shortModelName(model))
                         .font(.system(size: 8, weight: .medium, design: .monospaced))
                         .foregroundColor(.white.opacity(0.3))
@@ -61,9 +67,17 @@ struct SessionCardCollapsed: View {
                     total: session.totalTaskCount
                 )
 
-                Text("\(Int(session.progress * 100))%")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(session.sessionState.stateColor)
+                Group {
+                    if AppSettings.shared.showContextWindow {
+                        Text("\(Int(session.contextUsage * 100))%")
+                            .font(.system(size: compact ? 9 : 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(ringColor(for: session))
+                    } else {
+                        Text(session.sessionState.label)
+                            .font(.system(size: compact ? 8 : 9, weight: .semibold))
+                            .foregroundColor(session.sessionState.stateColor)
+                    }
+                }
 
                 if AppSettings.shared.showCostTracking && !session.costSummary.isEmpty {
                     Text(session.costSummary)
@@ -81,15 +95,15 @@ struct SessionCardCollapsed: View {
             }
 
             // Secondary line: last reasoning or status
-            if let reasoning = session.lastReasoning ?? (session.isWaitingForUser ? session.lastResponse : nil) {
+            if !compact, let reasoning = session.lastReasoning ?? (session.isWaitingForUser ? session.lastResponse : nil) {
                 Text(reasoning)
                     .font(.system(size: 10))
                     .foregroundColor(.white.opacity(0.45))
                     .lineLimit(1)
-                    .padding(.leading, 20) // indent past icon
+                    .padding(.leading, 20)
             }
         }
-        .padding(.horizontal, 12).padding(.vertical, 8)
+        .padding(.horizontal, 12).padding(.vertical, compact ? 5 : 8)
         .background(Color.white.opacity(hovering ? 0.08 : 0.04))
         .cornerRadius(8)
         .contentShape(Rectangle())
@@ -109,6 +123,11 @@ struct SessionCardExpanded: View {
     @State private var showClaudeMd: Bool = false
     @State private var editingClaudeMd: Bool = false
     @State private var claudeMdDraft: String = ""
+    @State private var nameHovering: Bool = false
+
+    private var compact: Bool { AppSettings.shared.compactMode }
+
+    private var settings: AppSettings { AppSettings.shared }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -118,28 +137,36 @@ struct SessionCardExpanded: View {
             Divider().background(Color.white.opacity(0.06))
 
             // Badge bar
-            badgeBar
+            if settings.showSessionBadges {
+                badgeBar
+            }
 
             // Git bar
-            if session.gitBranch != nil {
+            if settings.showGitStatus, session.gitBranch != nil {
                 gitBar
             }
 
             // Scrollable content
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 0) {
-                    // Timeline spine with tasks + events
-                    if !session.tasks.isEmpty || session.pendingApproval != nil {
+                    // Timeline with tasks + events
+                    if settings.showTimeline, !session.tasks.isEmpty || session.pendingApproval != nil {
                         TimelineSpine(
-                            tasks: session.tasks,
+                            tasks: settings.showDiffs ? session.tasks : session.tasks.map { var t = $0; t.diffFiles = nil; return t },
                             pendingApproval: session.pendingApproval,
                             session: session
                         )
                         .padding(.horizontal, 8)
                     }
 
+                    // Approval card always visible even if timeline is hidden
+                    if !settings.showTimeline, let approval = session.pendingApproval {
+                        TimelineEventNode.approval(approval: approval, session: session)
+                            .padding(.horizontal, 8)
+                    }
+
                     // Reasoning
-                    if let reasoning = session.lastReasoning {
+                    if settings.showReasoning, let reasoning = session.lastReasoning {
                         reasoningSection(reasoning)
                     }
 
@@ -171,7 +198,7 @@ struct SessionCardExpanded: View {
             // Approval hints or message input
             if session.pendingApproval != nil {
                 approvalHints
-            } else if session.isActive && !session.isCompleted && session.terminalAvailable {
+            } else if settings.showMessageInput && session.isActive && !session.isCompleted && session.terminalAvailable {
                 messageInput
             }
         }
@@ -189,18 +216,43 @@ struct SessionCardExpanded: View {
         HStack(spacing: 8) {
             SessionStateIcon(state: session.sessionState, size: 16)
 
-            Text(session.name)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.white)
-                .lineLimit(1)
+            HStack(spacing: 4) {
+                Text(session.name)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+
+                if nameHovering || session.isPinned {
+                    Button { session.isPinned.toggle() } label: {
+                        Image(systemName: session.isPinned ? "pin.fill" : "pin")
+                            .font(.system(size: 9))
+                            .foregroundColor(session.isPinned ? brandOrange : .white.opacity(0.3))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .onHover { nameHovering = $0 }
+
+            if session.isStale {
+                Text("Idle \(session.staleDuration)")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.white.opacity(0.35))
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Color.white.opacity(0.06))
+                    .cornerRadius(3)
+            }
 
             Spacer()
 
-            ProgressRing(progress: session.progress, size: 18, lineWidth: 2.5, color: session.sessionState.stateColor)
+            ProgressRing(progress: ringProgress(for: session), size: 18, lineWidth: 2.5, color: ringColor(for: session))
                 .overlay(
-                    Text("\(Int(session.progress * 100))")
-                        .font(.system(size: 7, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.5))
+                    Group {
+                        if AppSettings.shared.showContextWindow {
+                            Text("\(Int(session.contextUsage * 100))")
+                                .font(.system(size: 7, weight: .bold, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.5))
+                        }
+                    }
                 )
 
             if state.sessions.count > 1 {
@@ -214,58 +266,95 @@ struct SessionCardExpanded: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 12).padding(.vertical, 8)
+        .padding(.horizontal, 12).padding(.vertical, compact ? 5 : 8)
     }
 
     // MARK: - Badge Bar
 
     var badgeBar: some View {
-        HStack(spacing: 6) {
-            if let mode = session.permissionMode {
-                Text(mode)
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .foregroundColor(permissionModeColor(mode))
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(permissionModeColor(mode).opacity(0.15))
-                    .cornerRadius(4)
-            }
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                if let mode = session.permissionMode {
+                    Text(mode)
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundColor(permissionModeColor(mode))
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(permissionModeColor(mode).opacity(0.15))
+                        .cornerRadius(4)
+                }
 
-            if let model = session.modelName {
-                Text(shortModelName(model))
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.4))
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Color.white.opacity(0.06))
-                    .cornerRadius(4)
-            }
+                if let model = session.modelName {
+                    Text(shortModelName(model))
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.4))
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(4)
+                }
 
-            if session.isCompleted {
-                Text("COMPLETED")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(SessionState.completed.stateColor)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(SessionState.completed.stateColor.opacity(0.15))
-                    .cornerRadius(4)
-            }
+                if session.isCompleted {
+                    Text("COMPLETED")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(SessionState.completed.stateColor)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(SessionState.completed.stateColor.opacity(0.15))
+                        .cornerRadius(4)
+                }
 
-            Spacer()
+                Spacer()
 
-            if session.claudeMdContent != nil {
                 Button {
-                    showClaudeMd.toggle()
-                    if showClaudeMd { editingClaudeMd = false }
+                    session.autoApproveAll.toggle()
                 } label: {
                     HStack(spacing: 3) {
-                        Image(systemName: "doc.text")
-                        Text("CLAUDE.md")
+                        Image(systemName: session.autoApproveAll ? "checkmark.shield.fill" : "checkmark.shield")
+                        Text(session.autoApproveAll ? "Auto" : "Manual")
                     }
                     .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(showClaudeMd ? brandOrange : .white.opacity(0.3))
+                    .foregroundColor(session.autoApproveAll ? brandSuccess.opacity(0.8) : .white.opacity(0.3))
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(session.autoApproveAll ? brandSuccess.opacity(0.1) : Color.clear)
+                    .cornerRadius(4)
                 }
                 .buttonStyle(.plain)
+                .help(session.autoApproveAll ? "All tools auto-approved for this session" : "Tools follow global approval settings")
+
+                if session.claudeMdContent != nil {
+                    Button {
+                        showClaudeMd.toggle()
+                        if showClaudeMd { editingClaudeMd = false }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "doc.text")
+                            Text("CLAUDE.md")
+                        }
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(showClaudeMd ? brandOrange : .white.opacity(0.3))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, compact ? 3 : 5)
+
+            // Context warning banner
+            if AppSettings.shared.showContextWarning && session.contextUsage >= AppSettings.shared.contextWarningThreshold {
+                contextWarningBanner
             }
         }
-        .padding(.horizontal, 12).padding(.vertical, 5)
+    }
+
+    var contextWarningBanner: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 9))
+                .foregroundColor(.orange)
+            Text("Context \(Int(session.contextUsage * 100))% — consider starting a new session")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(.orange.opacity(0.9))
+            Spacer()
+        }
+        .padding(.horizontal, 12).padding(.vertical, 4)
+        .background(Color.orange.opacity(0.08))
     }
 
     // MARK: - Git Bar
@@ -348,7 +437,12 @@ struct SessionCardExpanded: View {
         Group {
             if !session.tokenSummary.isEmpty {
                 HStack(spacing: 12) {
-                    Label(session.tokenSummary, systemImage: "number")
+                    if AppSettings.shared.showContextWindow {
+                        Label(session.contextSummary, systemImage: "brain")
+                            .foregroundColor(contextColor(for: session.contextUsage).opacity(0.6))
+                    } else {
+                        Label(session.tokenSummary, systemImage: "number")
+                    }
                     if AppSettings.shared.showCostTracking && !session.costSummary.isEmpty {
                         Label(session.costSummary, systemImage: "dollarsign.circle")
                             .foregroundColor(brandOrange.opacity(0.5))
@@ -358,7 +452,7 @@ struct SessionCardExpanded: View {
                 }
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundColor(.white.opacity(0.25))
-                .padding(.horizontal, 12).padding(.vertical, 4)
+                .padding(.horizontal, 12).padding(.vertical, compact ? 2 : 4)
             }
         }
     }

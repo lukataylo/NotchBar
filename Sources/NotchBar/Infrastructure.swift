@@ -113,15 +113,33 @@ class HotkeyManager {
             ProviderManager.shared?.reject(requestId: approval.requestId, session: session)
         }
 
+        handlerMap.handlers[4] = {
+            guard state.sessions.count > 1 else { return }
+            let next = (state.activeSessionIndex + 1) % state.sessions.count
+            log.info("Hotkey: Cmd+Shift+] (next session \(next))")
+            state.selectCard(next)
+        }
+
+        handlerMap.handlers[5] = {
+            guard state.sessions.count > 1 else { return }
+            let prev = (state.activeSessionIndex - 1 + state.sessions.count) % state.sessions.count
+            log.info("Hotkey: Cmd+Shift+[ (prev session \(prev))")
+            state.selectCard(prev)
+        }
+
         // Register Carbon hotkeys — all use Cmd+Shift to avoid conflicts with standard app shortcuts
         var ref1: EventHotKeyRef?
         var ref2: EventHotKeyRef?
         var ref3: EventHotKeyRef?
+        var ref4: EventHotKeyRef?
+        var ref5: EventHotKeyRef?
         let sig = OSType(0x4E434C44)
         let cmdShift = UInt32(cmdKey | shiftKey)
         RegisterEventHotKey(UInt32(kVK_ANSI_C), cmdShift, EventHotKeyID(signature: sig, id: 1), GetApplicationEventTarget(), 0, &ref1)
         RegisterEventHotKey(UInt32(kVK_ANSI_Y), cmdShift, EventHotKeyID(signature: sig, id: 2), GetApplicationEventTarget(), 0, &ref2)
         RegisterEventHotKey(UInt32(kVK_ANSI_N), cmdShift, EventHotKeyID(signature: sig, id: 3), GetApplicationEventTarget(), 0, &ref3)
+        RegisterEventHotKey(UInt32(kVK_ANSI_RightBracket), cmdShift, EventHotKeyID(signature: sig, id: 4), GetApplicationEventTarget(), 0, &ref4)
+        RegisterEventHotKey(UInt32(kVK_ANSI_LeftBracket), cmdShift, EventHotKeyID(signature: sig, id: 5), GetApplicationEventTarget(), 0, &ref5)
 
         // Single event handler dispatches by hotkey ID
         let mapPtr = Unmanaged.passUnretained(handlerMap).toOpaque()
@@ -140,7 +158,7 @@ class HotkeyManager {
             return noErr
         }, 1, &eventType, mapPtr, nil)
 
-        log.info("Hotkeys registered: Cmd+Shift+C, Cmd+Shift+Y, Cmd+Shift+N")
+        log.info("Hotkeys registered: Cmd+Shift+C/Y/N/[/]")
     }
 }
 
@@ -160,16 +178,12 @@ class StatusItemManager: NSObject {
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            let img = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
-                let path = NSBezierPath()
-                let s = rect.width / 24.0
-                let pts: [(CGFloat, CGFloat)] = [
-                    (3,5),(20.998,5),(20.998,10.949),(24,10.949),(24,14.051),
-                    (21,14.051),(21,17.079),(3,17.079),(3,14.05),(0,14.05),(0,10.95),(3,10.95)
-                ]
-                path.move(to: NSPoint(x: pts[0].0 * s, y: rect.height - pts[0].1 * s))
-                for pt in pts.dropFirst() { path.line(to: NSPoint(x: pt.0 * s, y: rect.height - pt.1 * s)) }
-                path.close(); NSColor.black.setFill(); path.fill()
+            let img = NSImage(size: NSSize(width: 18, height: 18), flipped: true) { rect in
+                guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
+                let owlPath = NotchOwlIcon().path(in: CGRect(origin: .zero, size: rect.size))
+                ctx.addPath(owlPath.cgPath)
+                ctx.setFillColor(NSColor.black.cgColor)
+                ctx.fillPath(using: .evenOdd)
                 return true
             }
             img.isTemplate = true

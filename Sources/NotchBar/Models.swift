@@ -222,6 +222,9 @@ class AgentSession: Identifiable, ObservableObject {
     @Published var gitChangedFiles: Int = 0
     @Published var pendingApproval: PendingApproval? = nil
     @Published var terminalAvailable: Bool = false
+    @Published var isPinned: Bool = false
+    @Published var autoApproveAll: Bool = false
+    @Published var lastToolActivityAt: Date? = nil
 
     var transcriptReader: (any LiveTranscriptReader)? = nil
     var startedAt: Date = Date()
@@ -262,6 +265,47 @@ class AgentSession: Identifiable, ObservableObject {
         return String(format: "%.1fh", seconds / 3600)
     }
 
+    // MARK: - Context Window
+
+    var contextWindowSize: Int {
+        guard let model = modelName?.lowercased() else { return 200_000 }
+        if model.contains("opus") && model.contains("4-6") { return 1_000_000 }
+        return 200_000
+    }
+
+    var contextUsage: Double {
+        let total = inputTokens + outputTokens
+        guard total > 0 else { return 0 }
+        return min(Double(total) / Double(contextWindowSize), 1.0)
+    }
+
+    var contextSummary: String {
+        let total = inputTokens + outputTokens
+        guard total > 0 else { return "" }
+        return "\(formatTokens(total)) / \(formatTokens(contextWindowSize))"
+    }
+
+    // MARK: - Stale Detection
+
+    var isStale: Bool {
+        guard isActive, !isCompleted else { return false }
+        guard let lastActivity = lastToolActivityAt else { return false }
+        return Date().timeIntervalSince(lastActivity) > 120
+    }
+
+    var staleDuration: String {
+        guard let lastActivity = lastToolActivityAt else { return "" }
+        let seconds = Date().timeIntervalSince(lastActivity)
+        if seconds < 60 { return "\(Int(seconds))s" }
+        if seconds < 3600 { return "\(Int(seconds / 60))m" }
+        return String(format: "%.1fh", seconds / 3600)
+    }
+
+    var displayStatus: String {
+        if isStale { return "Idle \(staleDuration)" }
+        return statusMessage
+    }
+
     func updateCost() {
         estimatedCost = ModelPricing.estimate(
             provider: providerID,
@@ -282,6 +326,7 @@ class AgentSession: Identifiable, ObservableObject {
     func appendTask(_ task: TaskItem) {
         if tasks.count >= maxVisibleTasks { tasks.removeFirst() }
         tasks.append(task)
+        lastToolActivityAt = Date()
     }
 
     var completedTaskCount: Int { tasks.filter { $0.status == .completed }.count }
@@ -308,6 +353,9 @@ class NotchState: ObservableObject {
     var resolvedExpandedIndex: Int {
         if let manual = expandedCardIndex, sessions.indices.contains(manual) {
             return manual
+        }
+        if let pinned = sessions.firstIndex(where: { $0.isPinned }) {
+            return pinned
         }
         return autoExpandIndex
     }

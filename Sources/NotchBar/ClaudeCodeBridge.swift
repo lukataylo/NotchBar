@@ -265,18 +265,22 @@ class ClaudeCodeBridge: AgentProviderController {
 
         if hookType == "pre-tool-use" || hookType == "pretooluse" {
             let shouldAuto = AppSettings.shared.shouldAutoApprove(toolName: toolName)
-            if shouldAuto {
-                // Auto-approve immediately on this thread — no main thread round-trip
+            // Check session-level auto-approve-all
+            let sessionAutoApprove: Bool = {
+                guard let sid = event.sessionId, let uuid = sessionMap[sid],
+                      let session = state.sessions.first(where: { $0.id == uuid }) else { return false }
+                return session.autoApproveAll
+            }()
+
+            if shouldAuto || sessionAutoApprove {
                 respond("{\"decision\":\"approve\"}")
             } else {
-                // Store the respond callback — will be called when user approves/rejects
                 DispatchQueue.main.async { [weak self] in
                     self?.pendingResponses[toolUseId] = respond
                 }
             }
         }
 
-        // Dispatch UI update to main thread
         DispatchQueue.main.async { [weak self] in
             self?.handleEvent(event)
         }
@@ -342,7 +346,7 @@ class ClaudeCodeBridge: AgentProviderController {
             let desc = event.toolDescription
             let toolName = event.toolName ?? "Tool"
             let settings = AppSettings.shared
-            let needsApproval = !settings.shouldAutoApprove(toolName: toolName)
+            let needsApproval = !settings.shouldAutoApprove(toolName: toolName) && !session.autoApproveAll
 
             if needsApproval {
                 log.info("Tool '\(toolName)' requires approval (request: \(toolUseId))")
@@ -404,6 +408,7 @@ class ClaudeCodeBridge: AgentProviderController {
             } else {
                 session.appendTask(TaskItem(title: desc, status: .completed, detail: detail, toolName: event.toolName, filePath: event.filePath))
             }
+            session.lastToolActivityAt = Date()
 
             // Clear pending approval if this was it
             if session.pendingApproval?.requestId == toolUseId {
@@ -415,8 +420,6 @@ class ClaudeCodeBridge: AgentProviderController {
                 fetchDiffForTask(filePath: fp, cwd: session.projectPath, session: session, toolUseId: toolUseId)
             }
 
-            let count = toolCounts[sessionId, default: 1]
-            session.progress = min(1.0 - 1.0 / (Double(count) * 0.3 + 1.0), 0.95)
             session.statusMessage = desc
 
         default: break
