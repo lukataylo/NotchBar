@@ -40,13 +40,13 @@ struct SessionCardCollapsed: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            // Left: state icon — fixed width for alignment
-            SessionStateIcon(state: session.sessionState, size: 12)
-                .frame(width: 14)
+            // Left: provider icon
+            ProviderMiniIcon(session: session)
+                .frame(width: 12, height: 12)
 
             // Name
             Text(session.name)
-                .font(.system(size: 11, weight: .medium))
+                .font(.matrix(11, weight: .medium))
                 .foregroundColor(.white)
                 .lineLimit(1)
 
@@ -54,12 +54,12 @@ struct SessionCardCollapsed: View {
 
             // Status text
             Text(statusText)
-                .font(.system(size: 10, design: .monospaced))
+                .font(.matrixMono(10))
                 .foregroundColor(statusColor)
 
             // Duration
             Text(session.duration)
-                .font(.system(size: 10, design: .monospaced))
+                .font(.matrixMono(10))
                 .foregroundColor(.white.opacity(0.25))
 
             if hovering, let onClose = onClose {
@@ -131,27 +131,37 @@ struct SessionCardExpanded: View {
                 gitBar
             }
 
-            // Scrollable content
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    // Timeline
-                    if settings.showTimeline, !session.tasks.isEmpty {
-                        TimelineSpine(
-                            tasks: settings.showDiffs ? session.tasks : session.tasks.map { var t = $0; t.diffFiles = nil; return t },
-                            pendingApproval: nil,  // Doorbell handles approvals now
-                            session: session
-                        )
-                        .padding(.horizontal, 8)
-                    }
+            // Content: embedded terminal or standard card view
+            if session.embeddedTerminalView != nil {
+                TerminalSessionView(sessionId: session.id)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 200, maxHeight: 360)
+                    .cornerRadius(4)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+            } else {
+                // Scrollable content
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        // Timeline
+                        if settings.showTimeline, !session.tasks.isEmpty {
+                            TimelineSpine(
+                                tasks: settings.showDiffs ? session.tasks : session.tasks.map { var t = $0; t.diffFiles = nil; return t },
+                                pendingApproval: nil,  // Doorbell handles approvals now
+                                session: session
+                            )
+                            .padding(.horizontal, 8)
+                        }
 
-                    // Reasoning
-                    if settings.showReasoning, let reasoning = session.lastReasoning {
-                        reasoningSection(reasoning)
-                    }
+                        // Reasoning
+                        if settings.showReasoning, let reasoning = session.lastReasoning {
+                            reasoningSection(reasoning)
+                        }
 
-                    // Waiting indicator
-                    if session.isWaitingForUser {
-                        waitingIndicator
+                        // Waiting indicator
+                        if session.isWaitingForUser {
+                            waitingIndicator
+                        }
                     }
                 }
             }
@@ -160,8 +170,8 @@ struct SessionCardExpanded: View {
 
             statsBar
 
-            // Message input (no approval hints — doorbell handles that)
-            if settings.showMessageInput && session.isActive && !session.isCompleted && session.terminalAvailable {
+            // Message input — hidden for embedded terminal sessions (user types directly in the terminal)
+            if settings.showMessageInput && session.isActive && !session.isCompleted && session.terminalAvailable && session.embeddedTerminalView == nil {
                 messageInput
             }
         }
@@ -177,11 +187,12 @@ struct SessionCardExpanded: View {
 
     var cardHeader: some View {
         HStack(spacing: 8) {
-            SessionStateIcon(state: session.sessionState, size: 16)
+            ProviderMiniIcon(session: session)
+                .frame(width: 16, height: 16)
 
             HStack(spacing: 4) {
                 Text(session.name)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.matrix(13, weight: .semibold))
                     .foregroundColor(.white)
                     .lineLimit(1)
 
@@ -198,7 +209,7 @@ struct SessionCardExpanded: View {
 
             if session.isStale {
                 Text("Idle \(session.staleDuration)")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.matrix(9, weight: .medium))
                     .foregroundColor(.white.opacity(0.35))
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(Color.white.opacity(0.06))
@@ -207,16 +218,7 @@ struct SessionCardExpanded: View {
 
             Spacer()
 
-            ProgressRing(progress: ringProgress(for: session), size: 18, lineWidth: 2.5, color: ringColor(for: session))
-                .overlay(
-                    Group {
-                        if AppSettings.shared.showContextWindow {
-                            Text("\(Int(session.contextUsage * 100))")
-                                .font(.system(size: 7, weight: .bold, design: .monospaced))
-                                .foregroundColor(.white.opacity(0.5))
-                        }
-                    }
-                )
+            SessionStateIcon(state: session.sessionState, size: 14)
 
             if let onClose = onClose {
                 Button(action: onClose) {
@@ -251,11 +253,11 @@ struct SessionCardExpanded: View {
                 .font(.system(size: 9))
                 .foregroundColor(.purple.opacity(0.6))
             Text(session.gitBranch ?? "")
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .font(.matrixMono(10, weight: .medium))
                 .foregroundColor(.white.opacity(0.5))
             if session.gitChangedFiles > 0 {
                 Text("\(session.gitChangedFiles) changed")
-                    .font(.system(size: 9, design: .monospaced))
+                    .font(.matrixMono(9))
                     .foregroundColor(.orange.opacity(0.6))
             }
             Spacer()
@@ -273,7 +275,7 @@ struct SessionCardExpanded: View {
                 .foregroundColor(brandOrange.opacity(0.6))
                 .padding(.top, 2)
             Text(reasoning)
-                .font(.system(size: 11))
+                .font(.matrix(11))
                 .foregroundColor(.white.opacity(0.7))
                 .lineLimit(3)
             Spacer(minLength: 0)
@@ -289,7 +291,7 @@ struct SessionCardExpanded: View {
         HStack(spacing: 6) {
             Circle().fill(SessionState.waitingForUser.stateColor).frame(width: 6, height: 6)
             Text("Claude is waiting for your input")
-                .font(.system(size: 11, weight: .medium))
+                .font(.matrix(11, weight: .medium))
                 .foregroundColor(SessionState.waitingForUser.stateColor)
             Spacer()
         }
@@ -316,7 +318,7 @@ struct SessionCardExpanded: View {
                     Label(session.duration, systemImage: "clock")
                     Spacer()
                 }
-                .font(.system(size: 9, design: .monospaced))
+                .font(.matrixMono(9))
                 .foregroundColor(.white.opacity(0.25))
                 .padding(.horizontal, 12).padding(.vertical, compact ? 2 : 4)
             }
@@ -333,12 +335,12 @@ struct SessionCardExpanded: View {
             ZStack(alignment: .leading) {
                 if messageText.isEmpty {
                     Text(session.isWaitingForUser ? "Reply to \(session.providerShortName)..." : "Message \(session.providerShortName)...")
-                        .font(.system(size: 12))
+                        .font(.matrix(12))
                         .foregroundColor(.white.opacity(0.3))
                 }
                 TextField("", text: $messageText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 12))
+                    .font(.matrix(12))
                     .foregroundColor(.white)
                     .onSubmit { send() }
             }
@@ -374,17 +376,112 @@ struct EmptySessionView: View {
                 .opacity(0.3)
                 .frame(width: 32, height: 32)
             Text("No active sessions")
-                .font(.system(size: 13, weight: .medium))
+                .font(.matrix(13, weight: .medium))
                 .foregroundColor(.white.opacity(0.4))
             Text("Start your agent in the terminal")
-                .font(.system(size: 11))
+                .font(.matrix(11))
                 .foregroundColor(.white.opacity(0.25))
+
+            NewSessionButton()
+                .padding(.top, 4)
+
             Text("⌘⇧C to toggle")
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .font(.matrixMono(9, weight: .medium))
                 .foregroundColor(.white.opacity(0.15))
             Spacer()
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - New Session Button
+
+struct NewSessionButton: View {
+    @State private var hovering = false
+
+    private let terminalGreen = Color(red: 0.4, green: 0.85, blue: 0.65)
+
+    var body: some View {
+        Button {
+            pickFolderAndLaunch()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "terminal.fill")
+                    .font(.system(size: 10))
+                Text("New Session")
+                    .font(.matrix(11, weight: .semibold))
+            }
+            .foregroundColor(hovering ? .white : terminalGreen)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(hovering ? terminalGreen.opacity(0.3) : terminalGreen.opacity(0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(terminalGreen.opacity(0.3), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+    }
+
+    private func pickFolderAndLaunch() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose a project directory for the Claude Code session"
+        panel.prompt = "Launch Session"
+        panel.level = .modalPanel
+
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            if let provider = ProviderManager.shared?.controller(for: .embeddedTerminal) as? EmbeddedTerminalProvider {
+                provider.launchSession(cwd: url.path)
+            }
+        }
+    }
+}
+
+// MARK: - New Session Header Button (compact "+" for the expanded header)
+
+struct NewSessionHeaderButton: View {
+    @State private var hovering = false
+
+    var body: some View {
+        Button {
+            pickFolderAndLaunch()
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(hovering ? .white.opacity(0.7) : .white.opacity(0.3))
+                .frame(width: 22, height: 22)
+                .background(hovering ? Color.white.opacity(0.1) : Color.clear)
+                .cornerRadius(5)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help("Launch new Claude Code session")
+    }
+
+    private func pickFolderAndLaunch() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose a project directory for the Claude Code session"
+        panel.prompt = "Launch Session"
+        panel.level = .modalPanel
+
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            if let provider = ProviderManager.shared?.controller(for: .embeddedTerminal) as? EmbeddedTerminalProvider {
+                provider.launchSession(cwd: url.path)
+            }
+        }
     }
 }
 

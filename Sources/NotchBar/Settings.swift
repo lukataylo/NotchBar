@@ -32,6 +32,11 @@ class AppSettings: ObservableObject {
     @AppStorage("transcriptPollInterval") var transcriptPollInterval: Double = 2.0
     @AppStorage("defaultProvider") var defaultProviderRawValue: String = ProviderID.claude.rawValue
 
+    // Conflict detector settings
+    @AppStorage("conflictLockExpiryMinutes") var conflictLockExpiryMinutes: Int = 5
+    @AppStorage("conflictAutoResolve") var conflictAutoResolve: Bool = false
+    @AppStorage("conflictFileWatcher") var conflictFileWatcher: Bool = true
+
     // Approval settings
     @AppStorage("autoApproveReads") var autoApproveReads: Bool = true
     @AppStorage("autoApproveEdits") var autoApproveEdits: Bool = true
@@ -502,6 +507,9 @@ struct PluginCard: View {
                 if descriptor.capabilities.liveApprovals {
                     approvalSection
                 }
+                if descriptor.id == .conflicts {
+                    conflictSettingsSection
+                }
                 if descriptor.capabilities.integrationInstall, let path = descriptor.settingsPath {
                     integrationSection(path: path)
                 }
@@ -559,6 +567,64 @@ struct PluginCard: View {
         }
     }
 
+    private var conflictSettingsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Coordination", systemImage: "arrow.triangle.merge")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.primary.opacity(0.7))
+
+            Toggle(isOn: $settings.conflictFileWatcher) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("File watcher").font(.system(size: 12))
+                    Text("Detect when external editors modify locked files.")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .toggleStyle(.checkbox)
+
+            Toggle(isOn: $settings.conflictAutoResolve) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Auto-resolve conflicts").font(.system(size: 12))
+                    Text("Automatically keep the lock owner after 12 seconds.")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .toggleStyle(.checkbox)
+
+            Divider()
+
+            HStack {
+                Text("Lock expiry")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Picker("", selection: $settings.conflictLockExpiryMinutes) {
+                    Text("2 min").tag(2)
+                    Text("5 min").tag(5)
+                    Text("10 min").tag(10)
+                    Text("30 min").tag(30)
+                }
+                .labelsHidden()
+                .frame(width: 90)
+            }
+
+            // Stats
+            let stats = CoordinationEngine.shared.stats
+            if stats.conflictsPrevented > 0 || stats.filesCoordinated > 0 {
+                Divider()
+                HStack(spacing: 16) {
+                    Label("\(stats.conflictsPrevented) conflicts", systemImage: "shield.checkered")
+                    Label("\(stats.filesCoordinated) files", systemImage: "doc.on.doc")
+                    Label("\(stats.activeLocksCount) locks", systemImage: "lock")
+                }
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+            }
+        }
+    }
+
     private func integrationSection(path: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label("Integration", systemImage: "link")
@@ -595,7 +661,7 @@ func installLaunchAgent() -> Bool {
     let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents")
     do {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let execPath = Bundle.main.executablePath ?? ProcessInfo.processInfo.arguments[0]
+        let execPath = Bundle.main.executablePath ?? ProcessInfo.processInfo.arguments.first ?? "NotchBar"
         let plist = """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

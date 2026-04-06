@@ -47,15 +47,15 @@ struct TimelineTaskNode: View {
                         .foregroundColor(.purple.opacity(0.6))
                 }
                 Text(task.title)
-                    .font(.system(size: compact ? 10 : 11, weight: .medium))
+                    .font(.matrix(compact ? 10 : 11, weight: .medium))
                     .foregroundColor(.white.opacity(0.8))
                     .lineLimit(1)
                 Spacer()
                 Text(task.elapsed)
-                    .font(.system(size: compact ? 8 : 9, design: .monospaced))
+                    .font(.matrixMono(compact ? 8 : 9))
                     .foregroundColor(.white.opacity(0.25))
                 Text(task.status.label)
-                    .font(.system(size: compact ? 8 : 9, weight: .semibold))
+                    .font(.matrix(compact ? 8 : 9, weight: .semibold))
                     .foregroundColor(task.status.color)
                 if task.diffFiles != nil {
                     Image(systemName: "chevron.right")
@@ -132,11 +132,11 @@ struct TimelineEventNode: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Text("Approval Required")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.matrix(12, weight: .bold))
                     .foregroundColor(session.providerAccentColor)
                 Spacer()
                 Text(approval.toolName)
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .font(.matrixMono(10, weight: .medium))
                     .foregroundColor(.white.opacity(0.4))
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Color.white.opacity(0.08))
@@ -144,20 +144,20 @@ struct TimelineEventNode: View {
             }
 
             Text(approval.toolDescription)
-                .font(.system(size: 11, weight: .medium))
+                .font(.matrix(11, weight: .medium))
                 .foregroundColor(.white.opacity(0.8))
 
             if let fp = approval.filePath {
                 HStack(spacing: 4) {
                     Image(systemName: "doc").font(.system(size: 9))
-                    Text(fp).font(.system(size: 10, design: .monospaced))
+                    Text(fp).font(.matrixMono(10))
                 }
                 .foregroundColor(.white.opacity(0.4))
             }
 
             if let cmd = approval.bashCommand {
                 Text(cmd)
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.matrixMono(10))
                     .foregroundColor(.white.opacity(0.6))
                     .padding(6)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -173,9 +173,9 @@ struct TimelineEventNode: View {
                     HStack(spacing: 4) {
                         Image(systemName: "checkmark")
                         Text("Approve")
-                        Text("⌘Y").font(.system(size: 8, design: .monospaced)).foregroundColor(.white.opacity(0.5))
+                        Text("⌘Y").font(.matrixMono(8)).foregroundColor(.white.opacity(0.5))
                     }
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.matrix(11, weight: .semibold))
                     .foregroundColor(.white)
                     .padding(.horizontal, 14).padding(.vertical, 6)
                     .background(Color.green.opacity(0.8))
@@ -189,9 +189,9 @@ struct TimelineEventNode: View {
                     HStack(spacing: 4) {
                         Image(systemName: "xmark")
                         Text("Reject")
-                        Text("⌘N").font(.system(size: 8, design: .monospaced)).foregroundColor(.white.opacity(0.5))
+                        Text("⌘N").font(.matrixMono(8)).foregroundColor(.white.opacity(0.5))
                     }
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.matrix(11, weight: .semibold))
                     .foregroundColor(.white)
                     .padding(.horizontal, 14).padding(.vertical, 6)
                     .background(Color.red.opacity(0.6))
@@ -215,7 +215,7 @@ struct TimelineEventNode: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Text("Session Complete")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.matrix(11, weight: .bold))
                     .foregroundColor(SessionState.completed.stateColor)
                 Spacer()
             }
@@ -227,7 +227,7 @@ struct TimelineEventNode: View {
                     Text("\(session.gitChangedFiles) files changed").foregroundColor(.orange.opacity(0.6))
                 }
             }
-            .font(.system(size: 9, design: .monospaced))
+            .font(.matrixMono(9))
             .foregroundColor(.white.opacity(0.35))
         }
         .padding(10)

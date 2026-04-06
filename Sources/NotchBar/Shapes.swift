@@ -125,7 +125,7 @@ struct ActiveProviderIcon: View {
 
     @ViewBuilder
     func providerIcon(for id: ProviderID, color: Color) -> some View {
-        if id == .claude {
+        if id == .claude || id == .embeddedTerminal {
             ClaudeCodeIcon()
                 .fill(color, style: FillStyle(eoFill: true))
         } else {
@@ -135,6 +135,25 @@ struct ActiveProviderIcon: View {
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .foregroundColor(color)
+        }
+    }
+}
+
+// MARK: - Provider Mini Icon (for card headers)
+
+struct ProviderMiniIcon: View {
+    let session: ClaudeSession
+
+    var body: some View {
+        if session.providerID == .claude || session.providerID == .embeddedTerminal {
+            ClaudeCodeIcon()
+                .fill(session.providerAccentColor, style: FillStyle(eoFill: true))
+        } else {
+            let symbolName = PluginRegistry.shared.descriptor(for: session.providerID)?.symbolName ?? "puzzlepiece"
+            Image(systemName: symbolName)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .foregroundColor(session.providerAccentColor)
         }
     }
 }

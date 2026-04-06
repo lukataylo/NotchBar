@@ -32,7 +32,7 @@ struct DiffLineView: View {
             Text(line.content).foregroundColor(textColor).lineLimit(1)
             Spacer(minLength: 0)
         }
-        .font(.system(size: 10, design: .monospaced))
+        .font(.matrixMono(10))
         .padding(.vertical, 1).padding(.trailing, 6)
         .background(bgColor)
     }
@@ -52,8 +52,8 @@ struct DiffContentView: View {
                     ForEach(Array(files.enumerated()), id: \.1.id) { idx, file in
                         Button { selected = idx } label: {
                             HStack(spacing: 4) {
-                                Text(file.filename).font(.system(size: 10, weight: .medium))
-                                Text("+\(file.additions) -\(file.deletions)").font(.system(size: 8, design: .monospaced)).foregroundColor(.white.opacity(0.4))
+                                Text(file.filename).font(.matrix(10, weight: .medium))
+                                Text("+\(file.additions) -\(file.deletions)").font(.matrixMono(8)).foregroundColor(.white.opacity(0.4))
                             }
                             .foregroundColor(idx == selected ? .white : .white.opacity(0.45))
                             .padding(.horizontal, 8).padding(.vertical, 4)
@@ -83,7 +83,7 @@ struct SessionPicker: View {
                 Button { state.activeSessionIndex = idx } label: {
                     HStack(spacing: 4) {
                         Circle().fill(dotColor(session)).frame(width: 5, height: 5)
-                        Text(session.name).font(.system(size: 10, weight: idx == state.activeSessionIndex ? .semibold : .regular)).lineLimit(1)
+                        Text(session.name).font(.matrix(10, weight: idx == state.activeSessionIndex ? .semibold : .regular)).lineLimit(1)
                     }
                     .foregroundColor(idx == state.activeSessionIndex ? .white : .white.opacity(0.4))
                     .padding(.horizontal, 8).padding(.vertical, 3)

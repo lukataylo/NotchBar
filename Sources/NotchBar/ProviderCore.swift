@@ -18,6 +18,8 @@ struct ProviderID: Hashable, Codable, Identifiable, RawRepresentable {
     static let cursor = ProviderID("cursor")
     static let builds = ProviderID("builds")
     static let tests = ProviderID("tests")
+    static let embeddedTerminal = ProviderID("embedded-terminal")
+    static let conflicts = ProviderID("conflicts")
 }
 
 // MARK: - Capabilities & Descriptor

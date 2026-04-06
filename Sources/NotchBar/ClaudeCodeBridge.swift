@@ -6,87 +6,6 @@ import ApplicationServices
 
 private let log = Logger(subsystem: "com.notchbar", category: "bridge")
 
-// MARK: - Claude Code Hook Event
-
-struct ClaudeCodeEvent: Codable {
-    let sessionId: String?
-    let cwd: String?
-    let permissionMode: String?
-    let hookEventName: String?
-    let toolName: String?
-    let toolInput: [String: AnyCodableValue]?
-    let toolResponse: ToolResponse?
-    let toolUseId: String?
-    let hookType: String?
-    let requestId: String?
-    let transcriptPath: String?
-
-    enum CodingKeys: String, CodingKey {
-        case sessionId = "session_id", cwd, permissionMode = "permission_mode"
-        case hookEventName = "hook_event_name", toolName = "tool_name"
-        case toolInput = "tool_input", toolResponse = "tool_response"
-        case toolUseId = "tool_use_id", hookType = "hook_type", requestId = "request_id"
-        case transcriptPath = "transcript_path"
-    }
-
-    struct ToolResponse: Codable {
-        let stdout: String?
-        let stderr: String?
-        let interrupted: Bool?
-    }
-
-    var toolDescription: String {
-        guard let input = toolInput else { return toolName ?? "Tool" }
-        switch toolName {
-        case "Edit": return "Edit \(shortPath(input["file_path"]?.stringValue))"
-        case "Write": return "Write \(shortPath(input["file_path"]?.stringValue))"
-        case "Read": return "Read \(shortPath(input["file_path"]?.stringValue))"
-        case "Bash":
-            return input["description"]?.stringValue ?? "Run: \(String((input["command"]?.stringValue ?? "").prefix(50)))"
-        case "Glob": return "Search: \(input["pattern"]?.stringValue ?? "")"
-        case "Grep": return "Grep: \(input["pattern"]?.stringValue ?? "")"
-        case "Agent": return "Agent: \(input["description"]?.stringValue ?? "subagent")"
-        default: return toolName ?? "Tool"
-        }
-    }
-
-    var isWriteOperation: Bool { ["Edit", "Write", "Bash", "NotebookEdit"].contains(toolName) }
-
-    var filePath: String? { toolInput?["file_path"]?.stringValue }
-    var bashCommand: String? { toolInput?["command"]?.stringValue }
-
-    private func shortPath(_ path: String?) -> String {
-        guard let path = path else { return "file" }
-        let parts = path.split(separator: "/")
-        return parts.count > 2 ? String(parts.suffix(2).joined(separator: "/")) : path
-    }
-}
-
-// MARK: - AnyCodableValue
-
-enum AnyCodableValue: Codable {
-    case string(String), int(Int), double(Double), bool(Bool), null
-    init(from decoder: Decoder) throws {
-        let c = try decoder.singleValueContainer()
-        if let v = try? c.decode(String.self) { self = .string(v) }
-        else if let v = try? c.decode(Int.self) { self = .int(v) }
-        else if let v = try? c.decode(Double.self) { self = .double(v) }
-        else if let v = try? c.decode(Bool.self) { self = .bool(v) }
-        else { self = .null }
-    }
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.singleValueContainer()
-        switch self {
-        case .string(let v): try c.encode(v)
-        case .int(let v): try c.encode(v)
-        case .double(let v): try c.encode(v)
-        case .bool(let v): try c.encode(v)
-        case .null: try c.encodeNil()
-        }
-    }
-    var stringValue: String? { if case .string(let v) = self { return v }; return nil }
-}
-
 // MARK: - Bridge
 
 class ClaudeCodeBridge: AgentProviderController {
@@ -136,7 +55,19 @@ class ClaudeCodeBridge: AgentProviderController {
     var gitTimer: Timer?
     var approvalTimers: [String: Timer] = [:]
     var socketServer: SocketServer?
-    var pendingResponses: [String: (String) -> Void] = [:]
+    /// Guarded by responseLock — accessed from socket thread (write) and main thread (read/remove).
+    private var pendingResponses: [String: (String) -> Void] = [:]
+    private let responseLock = NSLock()
+
+    func setPendingResponse(_ respond: @escaping (String) -> Void, for requestId: String) {
+        responseLock.lock(); defer { responseLock.unlock() }
+        pendingResponses[requestId] = respond
+    }
+
+    func removePendingResponse(for requestId: String) -> ((String) -> Void)? {
+        responseLock.lock(); defer { responseLock.unlock() }
+        return pendingResponses.removeValue(forKey: requestId)
+    }
 
     init(state: NotchState) {
         self.state = state
@@ -156,7 +87,7 @@ class ClaudeCodeBridge: AgentProviderController {
         socketServer?.onTimeout = { [weak self] event in
             let requestId = event.toolUseId ?? event.requestId ?? ""
             DispatchQueue.main.async {
-                self?.pendingResponses.removeValue(forKey: requestId)
+                _ = self?.removePendingResponse(for: requestId)
                 self?.approvalTimers[requestId]?.invalidate()
                 self?.approvalTimers.removeValue(forKey: requestId)
                 if let session = self?.state.sessions.first(where: { $0.pendingApprovals.contains(where: { $0.requestId == requestId }) }) {
@@ -239,8 +170,13 @@ class ClaudeCodeBridge: AgentProviderController {
                 session.isActive = true
                 session.statusMessage = "Running"
                 session.pid = s.pid
-                session.terminalAvailable = Shell.isRunningInTerminal(pid: s.pid)
                 self.state.sessions.append(session)
+                // Check terminal availability off main thread
+                let pid = s.pid
+                DispatchQueue.global(qos: .utility).async {
+                    let inTerminal = Shell.isRunningInTerminal(pid: pid)
+                    DispatchQueue.main.async { session.terminalAvailable = inTerminal }
+                }
                 self.readClaudeMd(for: session)
             }
             if !self.state.sessions.isEmpty { self.state.activeSessionIndex = 0 }
@@ -265,6 +201,10 @@ class ClaudeCodeBridge: AgentProviderController {
                         session.statusMessage = "Completed"
                         session.progress = 1.0
                         changed = true
+                        // Release file locks for this session
+                        if let conflictProvider = ProviderManager.shared?.controller(for: .conflicts) as? ConflictDetectorProvider {
+                            conflictProvider.onSessionEnded(session)
+                        }
                         if AppSettings.shared.notifySessionComplete {
                             self.sendNotification(title: "Session Complete", body: "\(session.name) finished. \(session.tokenSummary) \(session.costSummary)")
                         }
@@ -311,7 +251,7 @@ class ClaudeCodeBridge: AgentProviderController {
                 respond("{\"decision\":\"approve\"}")
             } else {
                 DispatchQueue.main.async { [weak self] in
-                    self?.pendingResponses[toolUseId] = respond
+                    self?.setPendingResponse(respond, for: toolUseId)
                 }
             }
         }
@@ -431,6 +371,11 @@ class ClaudeCodeBridge: AgentProviderController {
             session.isWaitingForUser = false
             setRunningTool((sessionUUID: session.id, taskTitle: desc), for: toolUseId)
 
+            // Notify conflict detector of file access
+            if let conflictProvider = ProviderManager.shared?.controller(for: .conflicts) as? ConflictDetectorProvider {
+                conflictProvider.onToolUse(toolName: toolName, filePath: event.filePath, agentType: "claude", session: session)
+            }
+
         case "post-tool-use", "posttooluse":
             let desc = event.toolDescription
 
@@ -482,7 +427,7 @@ class ClaudeCodeBridge: AgentProviderController {
         log.info("\(decision.capitalized) request \(requestId)")
 
         // Respond via socket if the connection is waiting
-        if let respond = pendingResponses.removeValue(forKey: requestId) {
+        if let respond = removePendingResponse(for: requestId) {
             var json: [String: Any] = ["decision": decision]
             if let reason = reason { json["reason"] = reason }
             if let data = try? JSONSerialization.data(withJSONObject: json),
@@ -581,14 +526,6 @@ class ClaudeCodeBridge: AgentProviderController {
         if changed { state.objectWillChange.send() }
     }
 
-    func installIntegration() -> Bool {
-        installHooks()
-    }
-
-    func removeIntegration() -> Bool {
-        removeHooks()
-    }
-
     func listPastSessions() -> [PastSession] {
         SessionHistoryManager.shared.listPastSessions()
     }
@@ -604,10 +541,13 @@ class ClaudeCodeBridge: AgentProviderController {
         // Auto-approve any pending approvals so Claude Code isn't stuck
         for (_, timer) in approvalTimers { timer.invalidate() }
         approvalTimers.removeAll()
-        for (_, respond) in pendingResponses {
+        responseLock.lock()
+        let pending = pendingResponses
+        pendingResponses.removeAll()
+        responseLock.unlock()
+        for (_, respond) in pending {
             respond("{\"decision\":\"approve\"}")
         }
-        pendingResponses.removeAll()
         socketServer?.stop()
         transcriptTimer?.invalidate()
         sessionLifecycleTimer?.invalidate()
@@ -615,141 +555,17 @@ class ClaudeCodeBridge: AgentProviderController {
         log.info("Bridge cleanup complete")
     }
 
-    // MARK: - Hook Script
+    // MARK: - Hook Delegation
+
+    func installIntegration() -> Bool { installHooks() }
+    func removeIntegration() -> Bool { removeHooks() }
 
     @discardableResult
-    func writeHookScript() -> Bool {
-        let script = """
-#!/bin/bash
-# NotchBar hook — socket-based IPC for fast approvals
-# Falls back to auto-approve if NotchBar is not running.
-SOCK="$HOME/.notchbar/notchbar.sock"
-HOOK_TYPE="${1:-notification}"
-INPUT=$(cat -)
-
-# Inject hook_type into the JSON
-EVENT=$(echo "$INPUT" | awk -v ht="$HOOK_TYPE" '
-  NR==1 { sub(/^[[:space:]]*\\{/, "{\\\"hook_type\\\":\\\"" ht "\\\",") }
-  { print }
-')
-
-# Try socket connection to NotchBar
-if [ -S "$SOCK" ]; then
-    RESPONSE=$(echo "$EVENT" | nc -U "$SOCK" 2>/dev/null)
-    if [ -n "$RESPONSE" ]; then
-        echo "$RESPONSE"
-        exit 0
-    fi
-fi
-
-# Socket unavailable (NotchBar not running): auto-approve
-[ "$HOOK_TYPE" = "pre-tool-use" ] && echo '{"decision":"approve"}'
-"""
-        let url = binDir.appendingPathComponent("notchbar-hook")
-        do {
-            try script.write(to: url, atomically: true, encoding: .utf8)
-            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
-            return true
-        } catch {
-            log.error("Failed to write hook script: \(error.localizedDescription)")
-            return false
-        }
-    }
-
-    // MARK: - Install/Remove Hooks
+    func writeHookScript() -> Bool { HookManager.writeHookScript(to: binDir) }
 
     @discardableResult
-    func installHooks() -> Bool {
-        let hookPath = binDir.appendingPathComponent("notchbar-hook").path
-        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/settings.json")
-
-        // If the file exists but is corrupt, refuse to overwrite — protects user's Claude config
-        var settings: [String: Any]
-        if FileManager.default.fileExists(atPath: url.path) {
-            guard let data = try? Data(contentsOf: url),
-                  let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                log.error("settings.json exists but is corrupted — refusing to overwrite")
-                return false
-            }
-            settings = parsed
-        } else {
-            settings = [:]
-        }
-
-        let notchEntry: (String) -> [String: Any] = { hookType in
-            ["matcher": "", "hooks": [["type": "command", "command": "\(hookPath) \(hookType)"]]]
-        }
-
-        var hooks = settings["hooks"] as? [String: Any] ?? [:]
-
-        // Merge: preserve existing hooks, remove old NotchBar/NotchClaude entries, add new ones
-        for (key, hookType) in [("PreToolUse", "pre-tool-use"), ("PostToolUse", "post-tool-use")] {
-            var entries = hooks[key] as? [[String: Any]] ?? []
-            // Remove any existing notchbar or legacy notchclaude entries
-            entries.removeAll { entry in
-                guard let hookList = entry["hooks"] as? [[String: Any]] else { return false }
-                return hookList.contains { h in
-                    let cmd = h["command"] as? String ?? ""
-                    return cmd.contains("notchbar-hook") || cmd.contains("notchclaude-hook")
-                }
-            }
-            entries.append(notchEntry(hookType))
-            hooks[key] = entries
-        }
-        settings["hooks"] = hooks
-
-        do {
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let data = try JSONSerialization.data(withJSONObject: settings, options: .prettyPrinted)
-            try data.write(to: url)
-            log.info("Hooks installed successfully (existing hooks preserved)")
-            return true
-        } catch {
-            log.error("Failed to install hooks: \(error.localizedDescription)")
-            return false
-        }
-    }
+    func installHooks() -> Bool { HookManager.installHooks(binDir: binDir) }
 
     @discardableResult
-    func removeHooks() -> Bool {
-        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/settings.json")
-        guard var settings = (try? Data(contentsOf: url)).flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) else {
-            log.error("Failed to read settings.json for hook removal")
-            return false
-        }
-
-        guard var hooks = settings["hooks"] as? [String: Any] else { return true }
-
-        // Only remove NotchBar entries, preserve all other hooks
-        for key in ["PreToolUse", "PostToolUse"] {
-            guard var entries = hooks[key] as? [[String: Any]] else { continue }
-            entries.removeAll { entry in
-                guard let hookList = entry["hooks"] as? [[String: Any]] else { return false }
-                return hookList.contains { h in
-                    (h["command"] as? String)?.contains("notchbar-hook") == true
-                }
-            }
-            if entries.isEmpty {
-                hooks.removeValue(forKey: key)
-            } else {
-                hooks[key] = entries
-            }
-        }
-
-        if hooks.isEmpty {
-            settings.removeValue(forKey: "hooks")
-        } else {
-            settings["hooks"] = hooks
-        }
-
-        do {
-            let data = try JSONSerialization.data(withJSONObject: settings, options: .prettyPrinted)
-            try data.write(to: url)
-            log.info("NotchBar hooks removed (other hooks preserved)")
-            return true
-        } catch {
-            log.error("Failed to remove hooks: \(error.localizedDescription)")
-            return false
-        }
-    }
+    func removeHooks() -> Bool { HookManager.removeHooks() }
 }

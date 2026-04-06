@@ -55,20 +55,20 @@ struct ApprovalOverlay: View {
     private var contextHeader: some View {
         HStack(spacing: 8) {
             Text(session.name)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.matrix(13, weight: .semibold))
                 .foregroundColor(.white)
                 .lineLimit(1)
 
             if let model = session.modelName {
                 Text(shortModelName(model))
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .font(.matrixMono(10, weight: .medium))
                     .foregroundColor(.white.opacity(0.35))
             }
 
             Spacer()
 
             Text(approvalAge)
-                .font(.system(size: 10, design: .monospaced))
+                .font(.matrixMono(10))
                 .foregroundColor(.white.opacity(0.3))
         }
     }
@@ -86,10 +86,10 @@ struct ApprovalOverlay: View {
             // Warning icon + tool type
             HStack(spacing: 5) {
                 Image(systemName: toolIcon)
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.matrix(10, weight: .bold))
                     .foregroundColor(toolColor)
                 Text(approval.toolName)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.matrix(12, weight: .bold))
                     .foregroundColor(toolColor)
             }
             .padding(.horizontal, 8)
@@ -99,7 +99,7 @@ struct ApprovalOverlay: View {
 
             // File path or description
             Text(approval.toolDescription)
-                .font(.system(size: 11))
+                .font(.matrix(11))
                 .foregroundColor(.white.opacity(0.6))
                 .lineLimit(1)
 
@@ -151,7 +151,7 @@ struct ApprovalOverlay: View {
         } else {
             // Fallback: just show the description
             Text(approval.toolDescription)
-                .font(.system(size: 11, design: .monospaced))
+                .font(.matrixMono(11))
                 .foregroundColor(.white.opacity(0.6))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
@@ -165,10 +165,10 @@ struct ApprovalOverlay: View {
             // File header
             HStack(spacing: 6) {
                 Text(filename)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.matrixMono(11, weight: .semibold))
                     .foregroundColor(.white.opacity(0.7))
                 Text(badge)
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.matrix(9, weight: .bold))
                     .foregroundColor(badgeColor)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)
@@ -188,12 +188,12 @@ struct ApprovalOverlay: View {
                     ForEach(Array(lines.prefix(12).enumerated()), id: \.0) { idx, line in
                         HStack(alignment: .top, spacing: 0) {
                             Text("\(idx + 1)")
-                                .font(.system(size: 10, design: .monospaced))
+                                .font(.matrixMono(10))
                                 .foregroundColor(.white.opacity(0.2))
                                 .frame(width: 28, alignment: .trailing)
                                 .padding(.trailing, 8)
                             Text(line)
-                                .font(.system(size: 10, design: .monospaced))
+                                .font(.matrixMono(10))
                                 .foregroundColor(.white.opacity(0.7))
                                 .lineLimit(1)
                             Spacer(minLength: 0)
@@ -202,7 +202,7 @@ struct ApprovalOverlay: View {
                     }
                     if lines.count > 12 {
                         Text("  ... \(lines.count - 12) more lines")
-                            .font(.system(size: 9, design: .monospaced))
+                            .font(.matrixMono(9))
                             .foregroundColor(.white.opacity(0.25))
                             .padding(.top, 2)
                     }
@@ -224,10 +224,10 @@ struct ApprovalOverlay: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 Text(filename)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.matrixMono(11, weight: .semibold))
                     .foregroundColor(.white.opacity(0.7))
                 Text("edit")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.matrix(9, weight: .bold))
                     .foregroundColor(.orange)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)
@@ -253,7 +253,7 @@ struct ApprovalOverlay: View {
                                 .lineLimit(1)
                             Spacer(minLength: 0)
                         }
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(.matrixMono(10))
                         .padding(.vertical, 1)
                         .background(diffRedBg)
                     }
@@ -267,7 +267,7 @@ struct ApprovalOverlay: View {
                                 .lineLimit(1)
                             Spacer(minLength: 0)
                         }
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(.matrixMono(10))
                         .padding(.vertical, 1)
                         .background(diffGreenBg)
                     }
@@ -289,10 +289,10 @@ struct ApprovalOverlay: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 Text("$")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(.matrixMono(11, weight: .bold))
                     .foregroundColor(.green.opacity(0.5))
                 Text(command)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.matrixMono(11))
                     .foregroundColor(.white.opacity(0.7))
                     .lineLimit(5)
                 Spacer(minLength: 0)
@@ -321,7 +321,7 @@ struct ApprovalOverlay: View {
     private func actionButton(_ title: String, color: Color, textColor: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.matrix(11, weight: .semibold))
                 .foregroundColor(textColor)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 7)
@@ -337,7 +337,7 @@ struct ApprovalOverlay: View {
         HStack {
             if queueCount > 1 {
                 Text("\(queueCount - 1) more pending")
-                    .font(.system(size: 10))
+                    .font(.matrix(10))
                     .foregroundColor(brandOrange.opacity(0.6))
             }
             Spacer()

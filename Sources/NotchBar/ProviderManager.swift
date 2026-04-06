@@ -1,14 +1,23 @@
 import Foundation
+import Combine
 
 class ProviderManager {
     static var shared: ProviderManager?
 
     let state: NotchState
     private var controllers: [ProviderID: any AgentProviderController] = [:]
+    private var startedProviderIDs: Set<ProviderID> = []
+    private var registryObserver: AnyCancellable?
+    private var hasStarted = false
 
     init(state: NotchState) {
         self.state = state
         Self.shared = self
+        registryObserver = PluginRegistry.shared.objectWillChange.sink { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.syncEnabledProviders()
+            }
+        }
     }
 
     // MARK: - Registration
@@ -22,15 +31,16 @@ class ProviderManager {
     // MARK: - Lifecycle
 
     func start() {
-        for id in PluginRegistry.shared.enabledPluginIDs {
-            controllers[id]?.start()
-        }
+        hasStarted = true
+        syncEnabledProviders()
     }
 
     func cleanup() {
-        for (_, controller) in controllers {
-            controller.cleanup()
+        for id in startedProviderIDs {
+            controllers[id]?.cleanup()
         }
+        startedProviderIDs.removeAll()
+        hasStarted = false
     }
 
     // MARK: - Accessors
@@ -93,5 +103,22 @@ class ProviderManager {
             return PluginRegistry.shared.descriptor(for: session.providerID)
         }
         return PluginRegistry.shared.descriptor(for: AppSettings.shared.defaultProviderID)
+    }
+
+    private func syncEnabledProviders() {
+        guard hasStarted else { return }
+
+        let enabledProviderIDs = Set(PluginRegistry.shared.enabledPluginIDs)
+
+        for id in startedProviderIDs.subtracting(enabledProviderIDs) {
+            controllers[id]?.cleanup()
+            startedProviderIDs.remove(id)
+            state.removeSessions(for: id)
+        }
+
+        for id in enabledProviderIDs.subtracting(startedProviderIDs) {
+            controllers[id]?.start()
+            startedProviderIDs.insert(id)
+        }
     }
 }

@@ -304,6 +304,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ProcessInfo.processInfo.disableAutomaticTermination("NotchBar must stay alive to handle hook events")
         ProcessInfo.processInfo.disableSuddenTermination()
 
+        // Register bundled custom font
+        FontManager.registerFonts()
+
         log.info("NotchBar launching...")
         log.info("Screens: \(NSScreen.screens.count), notched: \(NSScreen.screens.filter { $0.hasNotch }.count)")
 
@@ -314,11 +317,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         providerManager = ProviderManager(state: state)
 
         // Register plugins
+        providerManager.register(EmbeddedTerminalProvider(state: state))
         providerManager.register(ClaudeCodeBridge(state: state))
         providerManager.register(CodexProvider(state: state))
         providerManager.register(CursorProvider(state: state))
         providerManager.register(BuildMonitorProvider(state: state))
         providerManager.register(TestRunnerProvider(state: state))
+        providerManager.register(ConflictDetectorProvider(state: state))
 
         providerManager.start()
 
