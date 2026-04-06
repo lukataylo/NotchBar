@@ -38,11 +38,11 @@ class AppSettings: ObservableObject {
     @AppStorage("conflictFileWatcher") var conflictFileWatcher: Bool = true
 
     // Approval settings
-    @AppStorage("autoApproveReads") var autoApproveReads: Bool = true
-    @AppStorage("autoApproveEdits") var autoApproveEdits: Bool = true
-    @AppStorage("autoApproveBash") var autoApproveBash: Bool = true
-    @AppStorage("autoApproveAgents") var autoApproveAgents: Bool = true
-    @AppStorage("autoApproveManagement") var autoApproveManagement: Bool = true
+    @AppStorage("autoApproveReads") var autoApproveReads: Bool = false
+    @AppStorage("autoApproveEdits") var autoApproveEdits: Bool = false
+    @AppStorage("autoApproveBash") var autoApproveBash: Bool = false
+    @AppStorage("autoApproveAgents") var autoApproveAgents: Bool = false
+    @AppStorage("autoApproveManagement") var autoApproveManagement: Bool = false
     @AppStorage("approvalTimeoutMinutes") var approvalTimeoutMinutes: Int = 5  // 0 = never
 
     func playSound(_ name: String) {

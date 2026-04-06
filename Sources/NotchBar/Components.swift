@@ -141,7 +141,7 @@ func ringColor(for session: ClaudeSession) -> Color {
 
 struct ColorRail: View {
     let sessions: [ClaudeSession]
-    let expandedIndex: Int
+    let expandedIndex: Int?
     let onSelect: (Int) -> Void
 
     var body: some View {

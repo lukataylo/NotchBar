@@ -362,17 +362,21 @@ class NotchState: ObservableObject {
 
     var hasActiveWork: Bool { sessions.contains { $0.isActive } }
 
-    var resolvedExpandedIndex: Int {
+    var resolvedExpandedIndex: Int? {
         if let manual = expandedCardIndex, sessions.indices.contains(manual) {
             return manual
         }
         if let pinned = sessions.firstIndex(where: { $0.isPinned }) {
             return pinned
         }
-        return autoExpandIndex
+        // Only auto-expand if a session needs approval
+        if let urgent = sessions.firstIndex(where: { $0.sessionState == .needsApproval }) {
+            return urgent
+        }
+        return nil
     }
 
-    var autoExpandIndex: Int {
+    var mostUrgentIndex: Int {
         guard !sessions.isEmpty else { return 0 }
         return sessions.indices.max(by: { a, b in
             let sa = sessions[a].sessionState

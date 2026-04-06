@@ -4,14 +4,14 @@ import SwiftUI
 
 struct SessionCardStack: View {
     @ObservedObject var state: NotchState
-    let expandedIndex: Int
+    let expandedIndex: Int?
 
     var body: some View {
         VStack(spacing: 4) {
             ForEach(Array(state.sessions.enumerated()), id: \.1.id) { idx, session in
                 if idx == expandedIndex {
                     SessionCardExpanded(session: session, state: state, onCollapse: {
-                        // Collapsing auto-selects next most urgent
+                        // Collapsing returns to all-collapsed state
                         state.expandedCardIndex = nil
                     }, onClose: {
                         state.removeSession(session)

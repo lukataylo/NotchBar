@@ -118,6 +118,7 @@ struct ExpandedViewV2: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                 }
+
             }
         }
     }
@@ -127,7 +128,7 @@ struct ExpandedViewV2: View {
     var headerSection: some View {
         HStack(spacing: 8) {
             Button(action: onCollapse) {
-                ActiveProviderIcon(session: state.sessions.isEmpty ? nil : state.sessions[state.resolvedExpandedIndex])
+                ActiveProviderIcon(session: state.sessions.isEmpty ? nil : state.sessions[state.resolvedExpandedIndex ?? state.mostUrgentIndex])
                     .frame(width: 20, height: 20)
             }.buttonStyle(.plain)
 
