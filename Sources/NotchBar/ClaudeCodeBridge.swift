@@ -91,14 +91,60 @@ enum AnyCodableValue: Codable {
 
 class ClaudeCodeBridge: AgentProviderController {
     static var shared: ClaudeCodeBridge?
-    let descriptor = ProviderCatalog.claude
+    let descriptor = ProviderDescriptor(
+        id: .claude,
+        displayName: "Claude Code",
+        shortName: "Claude",
+        executableName: "claude",
+        settingsPath: "~/.claude/settings.json",
+        instructionsFileName: "CLAUDE.md",
+        integrationTitle: "Claude hooks",
+        installActionTitle: "Install Hooks",
+        removeActionTitle: "Remove Hooks",
+        integrationSummary: "Install NotchBar hook entries into Claude's settings so live tool events and approval requests appear in the notch.",
+        accentColor: brandOrange,
+        statusColor: brandSuccess,
+        symbolName: "sparkles.rectangle.stack",
+        capabilities: ProviderCapabilities(
+            liveApprovals: true,
+            liveReasoning: true,
+            sessionHistory: true,
+            integrationInstall: true
+        ),
+        description: "Live monitoring, approval cards, and tool timeline for Claude Code sessions.",
+        stability: .stable
+    )
 
     let binDir: URL
     let state: NotchState
 
-    var sessionMap: [String: UUID] = [:]
-    var toolCounts: [String: Int] = [:]
-    var runningTools: [String: (sessionUUID: UUID, taskTitle: String)] = [:]
+    private let lock = NSLock()
+    private var _sessionMap: [String: UUID] = [:]
+    private var _toolCounts: [String: Int] = [:]
+    private var _runningTools: [String: (sessionUUID: UUID, taskTitle: String)] = [:]
+
+    // Thread-safe accessors
+    var sessionMap: [String: UUID] {
+        get { lock.lock(); defer { lock.unlock() }; return _sessionMap }
+        set { lock.lock(); defer { lock.unlock() }; _sessionMap = newValue }
+    }
+    func sessionMapValue(for key: String) -> UUID? {
+        lock.lock(); defer { lock.unlock() }; return _sessionMap[key]
+    }
+    func setSessionMap(_ value: UUID, for key: String) {
+        lock.lock(); defer { lock.unlock() }; _sessionMap[key] = value
+    }
+    func incrementToolCount(for key: String) {
+        lock.lock(); defer { lock.unlock() }; _toolCounts[key, default: 0] += 1
+    }
+    func setRunningTool(_ value: (sessionUUID: UUID, taskTitle: String)?, for key: String) {
+        lock.lock(); defer { lock.unlock() }
+        if let value { _runningTools[key] = value } else { _runningTools.removeValue(forKey: key) }
+    }
+    func removeRunningTool(for key: String) -> (sessionUUID: UUID, taskTitle: String)? {
+        lock.lock(); defer { lock.unlock() }; return _runningTools.removeValue(forKey: key)
+    }
+
     var transcriptTimer: Timer?
     var sessionLifecycleTimer: Timer?
     var gitTimer: Timer?
@@ -127,8 +173,8 @@ class ClaudeCodeBridge: AgentProviderController {
                 self?.pendingResponses.removeValue(forKey: requestId)
                 self?.approvalTimers[requestId]?.invalidate()
                 self?.approvalTimers.removeValue(forKey: requestId)
-                if let session = self?.state.sessions.first(where: { $0.pendingApproval?.requestId == requestId }) {
-                    session.pendingApproval = nil
+                if let session = self?.state.sessions.first(where: { $0.pendingApprovals.contains(where: { $0.requestId == requestId }) }) {
+                    session.pendingApprovals.removeAll { $0.requestId == requestId }
                     session.statusMessage = "Timed out (auto-approved)"
                     self?.state.objectWillChange.send()
                 }
@@ -183,10 +229,13 @@ class ClaudeCodeBridge: AgentProviderController {
 
         var sessions: [(name: String, path: String, pid: Int32)] = []
         for pid in pids {
+            let home = FileManager.default.homeDirectoryForCurrentUser.path
             guard let cwd = Shell.cwd(for: pid),
-                  cwd.hasPrefix("/Users/"),
-                  !cwd.contains("/Library/"),
-                  cwd.components(separatedBy: "/").count >= 4 else { continue }
+                  cwd.hasPrefix(home + "/"),
+                  !cwd.hasPrefix(home + "/Library/"),
+                  !cwd.hasPrefix(home + "/Downloads/"),
+                  !cwd.hasPrefix(home + "/Desktop/"),
+                  cwd.components(separatedBy: "/").count >= 5 else { continue }
             let name = (cwd as NSString).lastPathComponent
             guard !name.isEmpty else { continue }
             sessions.append((name: name, path: cwd, pid: pid))
@@ -199,7 +248,7 @@ class ClaudeCodeBridge: AgentProviderController {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             for s in sessions {
-                if self.state.sessions.contains(where: { $0.projectPath == s.path && !$0.isCompleted }) { continue }
+                if self.state.sessions.contains(where: { $0.projectPath == s.path && $0.providerID == .claude && !$0.isCompleted }) { continue }
                 let session = AgentSession(name: s.name, projectPath: s.path, providerID: .claude)
                 session.isActive = true
                 session.statusMessage = "Running"
@@ -267,7 +316,7 @@ class ClaudeCodeBridge: AgentProviderController {
             let shouldAuto = AppSettings.shared.shouldAutoApprove(toolName: toolName)
             // Check session-level auto-approve-all
             let sessionAutoApprove: Bool = {
-                guard let sid = event.sessionId, let uuid = sessionMap[sid],
+                guard let sid = event.sessionId, let uuid = sessionMapValue(for: sid),
                       let session = state.sessions.first(where: { $0.id == uuid }) else { return false }
                 return session.autoApproveAll
             }()
@@ -297,12 +346,16 @@ class ClaudeCodeBridge: AgentProviderController {
 
         let cwd = event.cwd ?? ""
         let session: ClaudeSession
-        if let uuid = sessionMap[sessionId], let existing = state.sessions.first(where: { $0.id == uuid }) {
+        if let uuid = sessionMapValue(for: sessionId), let existing = state.sessions.first(where: { $0.id == uuid }) {
             session = existing
         } else {
-            // Only create sessions for real project directories
-            guard cwd.hasPrefix("/Users/"), !cwd.contains("/Library/"),
-                  cwd.components(separatedBy: "/").count >= 4,
+            // Only create sessions for real project directories under current user
+            let home = FileManager.default.homeDirectoryForCurrentUser.path
+            guard cwd.hasPrefix(home + "/"),
+                  !cwd.hasPrefix(home + "/Library/"),
+                  !cwd.hasPrefix(home + "/Downloads/"),
+                  !cwd.hasPrefix(home + "/Desktop/"),
+                  cwd.components(separatedBy: "/").count >= 5,
                   FileManager.default.fileExists(atPath: cwd) else { return }
             let projectName = (cwd as NSString).lastPathComponent
             let s = AgentSession(name: projectName, projectPath: cwd, providerID: .claude)
@@ -320,8 +373,7 @@ class ClaudeCodeBridge: AgentProviderController {
                 }
             }
             state.sessions.append(s)
-            sessionMap[sessionId] = s.id
-            toolCounts[sessionId] = 0
+            setSessionMap(s.id, for: sessionId)
             session = s
             if state.sessions.count == 1 { state.activeSessionIndex = 0 }
             readClaudeMd(for: s)
@@ -350,7 +402,7 @@ class ClaudeCodeBridge: AgentProviderController {
 
             if needsApproval {
                 log.info("Tool '\(toolName)' requires approval (request: \(toolUseId))")
-                let approval = PendingApproval(
+                var approval = PendingApproval(
                     requestId: toolUseId,
                     toolName: toolName,
                     toolDescription: desc,
@@ -358,7 +410,13 @@ class ClaudeCodeBridge: AgentProviderController {
                     bashCommand: event.bashCommand,
                     isWriteOperation: event.isWriteOperation
                 )
-                session.pendingApproval = approval
+                // Capture content for the approval overlay
+                if let input = event.toolInput {
+                    approval.fileContent = input["content"]?.stringValue
+                    approval.editOldString = input["old_string"]?.stringValue
+                    approval.editNewString = input["new_string"]?.stringValue
+                }
+                session.pendingApprovals.append(approval)
                 session.appendTask(TaskItem(title: desc, status: .pendingApproval, toolName: toolName, filePath: event.filePath))
                 session.statusMessage = "Awaiting approval: \(desc)"
 
@@ -385,11 +443,11 @@ class ClaudeCodeBridge: AgentProviderController {
             }
 
             session.isWaitingForUser = false
-            runningTools[toolUseId] = (sessionUUID: session.id, taskTitle: desc)
+            setRunningTool((sessionUUID: session.id, taskTitle: desc), for: toolUseId)
 
         case "post-tool-use", "posttooluse":
             let desc = event.toolDescription
-            toolCounts[sessionId, default: 0] += 1
+            incrementToolCount(for: sessionId)
 
             let detail: String?
             if let r = event.toolResponse {
@@ -401,7 +459,7 @@ class ClaudeCodeBridge: AgentProviderController {
                 }
             } else { detail = nil }
 
-            if let info = runningTools.removeValue(forKey: toolUseId),
+            if let info = removeRunningTool(for: toolUseId),
                let idx = session.tasks.lastIndex(where: { $0.title == info.taskTitle && ($0.status == .running || $0.status == .pendingApproval) }) {
                 session.tasks[idx].status = .completed
                 session.tasks[idx].detail = detail
@@ -411,9 +469,7 @@ class ClaudeCodeBridge: AgentProviderController {
             session.lastToolActivityAt = Date()
 
             // Clear pending approval if this was it
-            if session.pendingApproval?.requestId == toolUseId {
-                session.pendingApproval = nil
-            }
+            session.pendingApprovals.removeAll { $0.requestId == toolUseId }
 
             // Fetch diff for write operations
             if event.isWriteOperation, let fp = event.filePath {
@@ -454,8 +510,8 @@ class ClaudeCodeBridge: AgentProviderController {
         approvalTimers.removeValue(forKey: requestId)
 
         if let session = state.sessions.first(where: { $0.id == sessionId }) {
-            if session.pendingApproval?.requestId == requestId {
-                session.pendingApproval = nil
+            if session.pendingApprovals.contains(where: { $0.requestId == requestId }) {
+                session.pendingApprovals.removeAll { $0.requestId == requestId }
                 if let idx = session.tasks.lastIndex(where: { $0.status == .pendingApproval }) {
                     session.tasks[idx].status = newStatus
                 }
@@ -620,8 +676,19 @@ fi
     func installHooks() -> Bool {
         let hookPath = binDir.appendingPathComponent("notchbar-hook").path
         let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/settings.json")
-        var settings: [String: Any] = (try? Data(contentsOf: url))
-            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+
+        // If the file exists but is corrupt, refuse to overwrite — protects user's Claude config
+        var settings: [String: Any]
+        if FileManager.default.fileExists(atPath: url.path) {
+            guard let data = try? Data(contentsOf: url),
+                  let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                log.error("settings.json exists but is corrupted — refusing to overwrite")
+                return false
+            }
+            settings = parsed
+        } else {
+            settings = [:]
+        }
 
         let notchEntry: (String) -> [String: Any] = { hookType in
             ["matcher": "", "hooks": [["type": "command", "command": "\(hookPath) \(hookType)"]]]

@@ -11,7 +11,18 @@ struct OnboardingView: View {
     var onComplete: () -> Void
 
     var selectedProvider: ProviderDescriptor {
-        ProviderCatalog.descriptor(for: settings.defaultProviderID)
+        PluginRegistry.shared.descriptor(for: settings.defaultProviderID)
+            ?? PluginRegistry.shared.descriptors.values.first
+            ?? ProviderDescriptor(
+                id: .claude, displayName: "NotchBar", shortName: "NB",
+                executableName: "", settingsPath: nil, instructionsFileName: "",
+                integrationTitle: "", installActionTitle: "", removeActionTitle: "",
+                integrationSummary: "", accentColor: brandOrange, statusColor: brandSuccess,
+                symbolName: "puzzlepiece",
+                capabilities: ProviderCapabilities(liveApprovals: false, liveReasoning: false, sessionHistory: false, integrationInstall: false),
+                description: "",
+                stability: .stable
+            )
     }
 
     var body: some View {
@@ -140,13 +151,22 @@ struct OnboardingView: View {
                 Button(action: {
                     log.info("Onboarding: user chose to install integration")
                     let installOk = ProviderManager.shared?.installIntegration() ?? false
-                    if installOk || !selectedProvider.capabilities.integrationInstall {
+
+                    // Verify the hook script is executable (for providers that install hooks)
+                    let hookOk: Bool = {
+                        guard selectedProvider.capabilities.integrationInstall else { return true }
+                        let hookPath = FileManager.default.homeDirectoryForCurrentUser
+                            .appendingPathComponent(".notchbar/bin/notchbar-hook").path
+                        return FileManager.default.isExecutableFile(atPath: hookPath)
+                    }()
+
+                    if (installOk && hookOk) || !selectedProvider.capabilities.integrationInstall {
                         integrationInstalled = true
                         integrationInstallFailed = false
                         withAnimation { currentStep = 2 }
                     } else {
                         integrationInstallFailed = true
-                        log.error("Onboarding: integration installation failed")
+                        log.error("Onboarding: integration installation failed (install=\(installOk) hook=\(hookOk))")
                     }
                 }) {
                     HStack(spacing: 6) {
@@ -357,19 +377,17 @@ struct OnboardingView: View {
     }
 
     var providerSafetyText: String {
-        switch selectedProvider.id {
-        case .claude:
-            return "If NotchBar is closed, Claude keeps working and hook approvals fail open after timeout."
-        case .codex:
-            return "The installed Codex profile does not replace your defaults. NotchBar monitors local Codex sessions and leaves terminal approvals in Codex itself."
+        if selectedProvider.capabilities.liveApprovals {
+            return "If NotchBar is closed, your agent keeps working and approvals fail open after timeout."
         }
+        return "NotchBar monitors \(selectedProvider.displayName) sessions without intercepting its own approval flow."
     }
 
     var approvalStepDescription: String {
         if selectedProvider.capabilities.liveApprovals {
             return "Choose what needs your approval.\nUnchecked tools will pause for your review."
         }
-        return "Choose your default approval policy.\nCodex still confirms risky actions in the terminal, while NotchBar tracks the session around it."
+        return "Choose your default approval policy.\n\(selectedProvider.displayName) still confirms risky actions in the terminal, while NotchBar tracks the session around it."
     }
 
     func shortcutRow(keys: String, description: String) -> some View {

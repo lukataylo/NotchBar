@@ -49,15 +49,18 @@ struct GitIntegration {
                 if let f = currentFile { files.append(DiffFile(filename: f, lines: currentLines)) }
                 currentLines = []
                 let parts = line.split(separator: " ")
-                currentFile = (parts.count >= 4)
-                    ? String(parts.last!).replacingOccurrences(of: "b/", with: "", options: .anchored)
-                    : "file"
+                currentFile = parts.last.map { String($0).replacingOccurrences(of: "b/", with: "", options: .anchored) } ?? "file"
             } else if line.hasPrefix("@@") {
                 currentLines.append(DiffLine(kind: .hunkHeader, content: line, oldLineNum: nil, newLineNum: nil))
-                let nums = line.split(separator: " ")
-                if nums.count >= 3 {
-                    oldLine = Int(String(nums[1]).dropFirst().split(separator: ",").first ?? "0") ?? 0
-                    newLine = Int(String(nums[2]).dropFirst().split(separator: ",").first ?? "0") ?? 0
+                // Parse: @@ -OLD,COUNT +NEW,COUNT @@
+                if let match = line.range(of: #"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@"#, options: .regularExpression) {
+                    let hunk = String(line[match])
+                    let digits = hunk.components(separatedBy: " ").compactMap { part -> Int? in
+                        let stripped = part.trimmingCharacters(in: CharacterSet(charactersIn: "-+@, "))
+                        return stripped.split(separator: ",").first.flatMap { Int($0) }
+                    }
+                    oldLine = digits.count > 0 ? digits[0] : 0
+                    newLine = digits.count > 1 ? digits[1] : 0
                 } else { oldLine = 0; newLine = 0 }
             } else if line.hasPrefix("+") && !line.hasPrefix("+++") {
                 currentLines.append(DiffLine(kind: .addition, content: String(line.dropFirst()), oldLineNum: nil, newLineNum: newLine))

@@ -109,20 +109,26 @@ func contextColor(for usage: Double) -> Color {
 }
 
 func ringProgress(for session: ClaudeSession) -> Double {
+    // Completed/idle always show definitive state
+    if session.isCompleted { return 1.0 }
+    if session.sessionState == .idle { return 0.0 }
+
     if AppSettings.shared.showContextWindow {
         return session.contextUsage
     }
-    // Activity mode: state-driven, not percentage
+    // Activity mode: state-driven
     switch session.sessionState {
-    case .completed:      return 1.0
     case .running:        return 0.3
     case .waitingForUser: return 0.3
     case .needsApproval:  return 0.3
-    case .idle:           return 0.0
+    default:              return 0.0
     }
 }
 
 func ringColor(for session: ClaudeSession) -> Color {
+    // Completed sessions always show green
+    if session.isCompleted { return SessionState.completed.stateColor }
+
     if AppSettings.shared.showContextWindow {
         return contextColor(for: session.contextUsage)
     }

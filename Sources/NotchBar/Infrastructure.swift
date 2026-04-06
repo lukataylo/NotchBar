@@ -227,7 +227,7 @@ class StatusItemManager: NSObject {
         statusItem.menu = menu
     }
 
-    var settingsWindow: NSWindow?
+    weak var settingsWindow: NSWindow?
 
     @objc func toggle() {
         if state.expandedScreenID != nil { state.expandedScreenID = nil }
@@ -237,12 +237,12 @@ class StatusItemManager: NSObject {
         }
     }
     @objc func installHooks() {
-        let provider = ProviderManager.shared?.activeProviderDescriptor(for: state.activeSession) ?? ProviderCatalog.claude
+        guard let provider = ProviderManager.shared?.activeProviderDescriptor(for: state.activeSession) else { return }
         let ok = ProviderManager.shared?.installIntegration(for: state.activeSession) ?? false
         let alert = NSAlert()
         if ok {
             alert.messageText = "Integration Installed"
-            alert.informativeText = successMessage(for: provider)
+            alert.informativeText = "\(provider.displayName) integration installed successfully."
         } else {
             alert.alertStyle = .warning
             alert.messageText = "Integration Problem"
@@ -251,7 +251,7 @@ class StatusItemManager: NSObject {
         alert.runModal()
     }
     @objc func removeHooks() {
-        let provider = ProviderManager.shared?.activeProviderDescriptor(for: state.activeSession) ?? ProviderCatalog.claude
+        guard let provider = ProviderManager.shared?.activeProviderDescriptor(for: state.activeSession) else { return }
         let ok = ProviderManager.shared?.removeIntegration(for: state.activeSession) ?? false
         let alert = NSAlert()
         if ok {
@@ -265,27 +265,24 @@ class StatusItemManager: NSObject {
         alert.runModal()
     }
     @objc func openSettings() {
-        if let w = settingsWindow, w.isVisible { w.makeKeyAndOrderFront(nil); return }
+        if let w = settingsWindow, w.isVisible {
+            NSApp.activate(ignoringOtherApps: true)
+            w.makeKeyAndOrderFront(nil)
+            return
+        }
         let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 540),
             styleMask: [.titled, .closable], backing: .buffered, defer: false
         )
+        w.isReleasedWhenClosed = false
         w.title = "NotchBar Settings"
         w.contentView = NSHostingView(rootView: SettingsView())
         w.center()
+        NSApp.activate(ignoringOtherApps: true)
         w.makeKeyAndOrderFront(nil)
         settingsWindow = w
     }
     @objc func quit() { NSApp.terminate(nil) }
-
-    private func successMessage(for provider: ProviderDescriptor) -> String {
-        switch provider.id {
-        case .claude:
-            return "Claude Code will now stream live hook events and approval requests to NotchBar."
-        case .codex:
-            return "The managed Codex `notchbar` profile is installed. Resume with `codex -p notchbar resume` for the recommended monitored setup."
-        }
-    }
 }
 
 // MARK: - App Delegate
@@ -311,6 +308,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyManager = HotkeyManager(state: state)
         statusItemManager = StatusItemManager(state: state)
         providerManager = ProviderManager(state: state)
+
+        // Register plugins
+        providerManager.register(ClaudeCodeBridge(state: state))
+        providerManager.register(CodexProvider(state: state))
+        providerManager.register(CursorProvider(state: state))
+        providerManager.register(BuildMonitorProvider(state: state))
+        providerManager.register(TestRunnerProvider(state: state))
+
         providerManager.start()
 
         UpdateChecker.shared.startChecking()

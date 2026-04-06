@@ -63,12 +63,17 @@ struct CollapsedView: View {
     }
 }
 
-// MARK: - Expanded View V2 (Card Stack + Color Rail)
+// MARK: - Expanded View
 
 struct ExpandedViewV2: View {
     @ObservedObject var state: NotchState
     let hasNotch: Bool
     var onCollapse: () -> Void = {}
+
+    /// The session with the most urgent pending approval, if any
+    private var approvalSession: AgentSession? {
+        state.sessions.first { !$0.pendingApprovals.isEmpty }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -77,10 +82,29 @@ struct ExpandedViewV2: View {
 
             Divider().background(Color.white.opacity(0.06))
 
-            // Main content: Rail + Card Stack
-            if state.sessions.isEmpty {
+            // Doorbell overlay takes over when approval is pending
+            if let session = approvalSession, let approval = session.pendingApproval {
+                ApprovalOverlay(
+                    approval: approval,
+                    session: session,
+                    queueCount: state.sessions.reduce(0) { $0 + $1.pendingApprovals.count },
+                    onDeny: {
+                        ProviderManager.shared?.reject(requestId: approval.requestId, session: session)
+                    },
+                    onAllowOnce: {
+                        ProviderManager.shared?.approve(requestId: approval.requestId, session: session)
+                    },
+                    onAllowAll: {
+                        ProviderManager.shared?.allowAll(requestId: approval.requestId, toolName: approval.toolName, session: session)
+                    },
+                    onBypass: {
+                        ProviderManager.shared?.bypass(requestId: approval.requestId, session: session)
+                    }
+                )
+            } else if state.sessions.isEmpty {
                 EmptySessionView()
             } else {
+                // Normal card stack
                 ScrollView(.vertical, showsIndicators: false) {
                     SessionCardStack(
                         state: state,

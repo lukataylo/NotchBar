@@ -116,19 +116,25 @@ struct ActiveProviderIcon: View {
 
     var body: some View {
         if let session = session, session.isActive {
-            switch session.providerID {
-            case .claude:
-                ClaudeCodeIcon()
-                    .fill(brandOrange, style: FillStyle(eoFill: true))
-            case .codex:
-                Image(systemName: "terminal")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .foregroundColor(codexBlue)
-            }
+            providerIcon(for: session.providerID, color: session.providerAccentColor)
         } else {
             NotchOwlIcon()
                 .fill(owlBlue, style: FillStyle(eoFill: true))
+        }
+    }
+
+    @ViewBuilder
+    func providerIcon(for id: ProviderID, color: Color) -> some View {
+        if id == .claude {
+            ClaudeCodeIcon()
+                .fill(color, style: FillStyle(eoFill: true))
+        } else {
+            // All other providers use their symbolName from the registry
+            let symbolName = PluginRegistry.shared.descriptor(for: id)?.symbolName ?? "puzzlepiece"
+            Image(systemName: symbolName)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .foregroundColor(color)
         }
     }
 }

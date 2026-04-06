@@ -4,7 +4,29 @@ import os.log
 private let codexLog = Logger(subsystem: "com.notchbar", category: "codex")
 
 final class CodexProvider: AgentProviderController {
-    let descriptor = ProviderCatalog.codex
+    let descriptor = ProviderDescriptor(
+        id: .codex,
+        displayName: "Codex",
+        shortName: "Codex",
+        executableName: "codex",
+        settingsPath: "~/.codex/config.toml",
+        instructionsFileName: "AGENTS.md",
+        integrationTitle: "Codex profile",
+        installActionTitle: "Install Profile",
+        removeActionTitle: "Remove Profile",
+        integrationSummary: "Install a managed `notchbar` profile in Codex config with recommended workspace-write, on-request approval preset.",
+        accentColor: codexBlue,
+        statusColor: brandSuccess,
+        symbolName: "terminal",
+        capabilities: ProviderCapabilities(
+            liveApprovals: false,
+            liveReasoning: true,
+            sessionHistory: true,
+            integrationInstall: true
+        ),
+        description: "Process discovery and transcript monitoring for OpenAI Codex sessions.",
+        stability: .beta
+    )
 
     private let state: NotchState
     private var pollTimer: Timer?
@@ -75,6 +97,13 @@ model_reasoning_effort = "medium"
         do {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            // Validate: check for orphaned managed markers
+            let hasStart = existing.contains(managedProfileStart)
+            let hasEnd = existing.contains(managedProfileEnd)
+            if hasStart != hasEnd {
+                codexLog.error("config.toml has orphaned NotchBar markers — refusing to modify")
+                return false
+            }
             let stripped = stripManagedProfile(from: existing)
             let separator = stripped.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : "\n\n"
             let updated = stripped.trimmingCharacters(in: .whitespacesAndNewlines) + separator + block + "\n"

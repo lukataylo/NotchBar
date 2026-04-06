@@ -32,83 +32,57 @@ struct SessionCardCollapsed: View {
 
     @State private var hovering = false
 
-    private var compact: Bool { AppSettings.shared.compactMode }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            // Primary line
-            HStack(spacing: 6) {
-                SessionStateIcon(state: session.sessionState, size: compact ? 12 : 14)
+        HStack(spacing: 8) {
+            // Left: state icon — fixed width for alignment
+            SessionStateIcon(state: session.sessionState, size: 12)
+                .frame(width: 14)
 
-                Text(session.name)
-                    .font(.system(size: compact ? 10 : 11, weight: .semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .frame(maxWidth: 120, alignment: .leading)
+            // Name
+            Text(session.name)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white)
+                .lineLimit(1)
 
-                if session.isStale {
-                    Text("Idle \(session.staleDuration)")
-                        .font(.system(size: 8, weight: .medium))
-                        .foregroundColor(.white.opacity(0.35))
-                } else if let model = session.modelName {
-                    Text(shortModelName(model))
-                        .font(.system(size: 8, weight: .medium, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.3))
-                        .padding(.horizontal, 4).padding(.vertical, 1)
-                        .background(Color.white.opacity(0.06))
-                        .cornerRadius(3)
-                }
+            Spacer(minLength: 4)
 
-                Spacer(minLength: 4)
+            // Status text
+            Text(statusText)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(statusColor)
 
-                DotProgress(
-                    completed: session.completedTaskCount,
-                    running: session.runningTaskCount,
-                    total: session.totalTaskCount
-                )
+            // Duration
+            Text(session.duration)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundColor(.white.opacity(0.25))
 
-                Group {
-                    if AppSettings.shared.showContextWindow {
-                        Text("\(Int(session.contextUsage * 100))%")
-                            .font(.system(size: compact ? 9 : 10, weight: .bold, design: .monospaced))
-                            .foregroundColor(ringColor(for: session))
-                    } else {
-                        Text(session.sessionState.label)
-                            .font(.system(size: compact ? 8 : 9, weight: .semibold))
-                            .foregroundColor(session.sessionState.stateColor)
-                    }
-                }
-
-                if AppSettings.shared.showCostTracking && !session.costSummary.isEmpty {
-                    Text(session.costSummary)
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundColor(brandOrange.opacity(0.6))
-                }
-
-                Text(session.duration)
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.25))
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 8))
-                    .foregroundColor(.white.opacity(hovering ? 0.4 : 0.2))
-            }
-
-            // Secondary line: last reasoning or status
-            if !compact, let reasoning = session.lastReasoning ?? (session.isWaitingForUser ? session.lastResponse : nil) {
-                Text(reasoning)
-                    .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.45))
-                    .lineLimit(1)
-                    .padding(.leading, 20)
-            }
+            Image(systemName: "chevron.right")
+                .font(.system(size: 8))
+                .foregroundColor(.white.opacity(hovering ? 0.4 : 0.15))
         }
-        .padding(.horizontal, 12).padding(.vertical, compact ? 5 : 8)
-        .background(Color.white.opacity(hovering ? 0.08 : 0.04))
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(hovering ? Color.white.opacity(0.05) : Color.clear)
         .cornerRadius(8)
         .contentShape(Rectangle())
         .onTapGesture { onTap() }
         .onHover { hovering = $0 }
+    }
+
+    private var statusText: String {
+        if session.isCompleted { return "Done" }
+        if session.isStale { return "Idle" }
+        if session.pendingApproval != nil { return "Approve?" }
+        if session.isWaitingForUser { return "Waiting" }
+        if AppSettings.shared.showContextWindow && session.contextUsage > 0 {
+            return "\(Int(session.contextUsage * 100))%"
+        }
+        return session.sessionState.label
+    }
+
+    private var statusColor: Color {
+        if session.isCompleted { return SessionState.completed.stateColor }
+        if session.pendingApproval != nil { return brandOrange }
+        return session.sessionState.stateColor
     }
 }
 
@@ -120,26 +94,16 @@ struct SessionCardExpanded: View {
     var onCollapse: () -> Void
 
     @State private var messageText: String = ""
-    @State private var showClaudeMd: Bool = false
-    @State private var editingClaudeMd: Bool = false
-    @State private var claudeMdDraft: String = ""
     @State private var nameHovering: Bool = false
 
     private var compact: Bool { AppSettings.shared.compactMode }
-
     private var settings: AppSettings { AppSettings.shared }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Card Header
             cardHeader
 
             Divider().background(Color.white.opacity(0.06))
-
-            // Badge bar
-            if settings.showSessionBadges {
-                badgeBar
-            }
 
             // Git bar
             if settings.showGitStatus, session.gitBranch != nil {
@@ -149,20 +113,14 @@ struct SessionCardExpanded: View {
             // Scrollable content
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 0) {
-                    // Timeline with tasks + events
-                    if settings.showTimeline, !session.tasks.isEmpty || session.pendingApproval != nil {
+                    // Timeline
+                    if settings.showTimeline, !session.tasks.isEmpty {
                         TimelineSpine(
                             tasks: settings.showDiffs ? session.tasks : session.tasks.map { var t = $0; t.diffFiles = nil; return t },
-                            pendingApproval: session.pendingApproval,
+                            pendingApproval: nil,  // Doorbell handles approvals now
                             session: session
                         )
                         .padding(.horizontal, 8)
-                    }
-
-                    // Approval card always visible even if timeline is hidden
-                    if !settings.showTimeline, let approval = session.pendingApproval {
-                        TimelineEventNode.approval(approval: approval, session: session)
-                            .padding(.horizontal, 8)
                     }
 
                     // Reasoning
@@ -174,31 +132,15 @@ struct SessionCardExpanded: View {
                     if session.isWaitingForUser {
                         waitingIndicator
                     }
-
-                    // Response
-                    if let response = session.lastResponse, !response.isEmpty {
-                        responseSection(response)
-                    }
-
-                    // CLAUDE.md viewer/editor
-                    if showClaudeMd, let content = editingClaudeMd ? nil : session.claudeMdContent {
-                        claudeMdViewer(content: content)
-                    }
-                    if showClaudeMd && editingClaudeMd {
-                        claudeMdEditor()
-                    }
                 }
             }
 
             Divider().background(Color.white.opacity(0.06))
 
-            // Stats bar
             statsBar
 
-            // Approval hints or message input
-            if session.pendingApproval != nil {
-                approvalHints
-            } else if settings.showMessageInput && session.isActive && !session.isCompleted && session.terminalAvailable {
+            // Message input (no approval hints — doorbell handles that)
+            if settings.showMessageInput && session.isActive && !session.isCompleted && session.terminalAvailable {
                 messageInput
             }
         }
@@ -269,94 +211,6 @@ struct SessionCardExpanded: View {
         .padding(.horizontal, 12).padding(.vertical, compact ? 5 : 8)
     }
 
-    // MARK: - Badge Bar
-
-    var badgeBar: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                if let mode = session.permissionMode {
-                    Text(mode)
-                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                        .foregroundColor(permissionModeColor(mode))
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(permissionModeColor(mode).opacity(0.15))
-                        .cornerRadius(4)
-                }
-
-                if let model = session.modelName {
-                    Text(shortModelName(model))
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.4))
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Color.white.opacity(0.06))
-                        .cornerRadius(4)
-                }
-
-                if session.isCompleted {
-                    Text("COMPLETED")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(SessionState.completed.stateColor)
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(SessionState.completed.stateColor.opacity(0.15))
-                        .cornerRadius(4)
-                }
-
-                Spacer()
-
-                Button {
-                    session.autoApproveAll.toggle()
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: session.autoApproveAll ? "checkmark.shield.fill" : "checkmark.shield")
-                        Text(session.autoApproveAll ? "Auto" : "Manual")
-                    }
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(session.autoApproveAll ? brandSuccess.opacity(0.8) : .white.opacity(0.3))
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(session.autoApproveAll ? brandSuccess.opacity(0.1) : Color.clear)
-                    .cornerRadius(4)
-                }
-                .buttonStyle(.plain)
-                .help(session.autoApproveAll ? "All tools auto-approved for this session" : "Tools follow global approval settings")
-
-                if session.claudeMdContent != nil {
-                    Button {
-                        showClaudeMd.toggle()
-                        if showClaudeMd { editingClaudeMd = false }
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "doc.text")
-                            Text("CLAUDE.md")
-                        }
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(showClaudeMd ? brandOrange : .white.opacity(0.3))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 12).padding(.vertical, compact ? 3 : 5)
-
-            // Context warning banner
-            if AppSettings.shared.showContextWarning && session.contextUsage >= AppSettings.shared.contextWarningThreshold {
-                contextWarningBanner
-            }
-        }
-    }
-
-    var contextWarningBanner: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 9))
-                .foregroundColor(.orange)
-            Text("Context \(Int(session.contextUsage * 100))% — consider starting a new session")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.orange.opacity(0.9))
-            Spacer()
-        }
-        .padding(.horizontal, 12).padding(.vertical, 4)
-        .background(Color.orange.opacity(0.08))
-    }
-
     // MARK: - Git Bar
 
     var gitBar: some View {
@@ -411,26 +265,6 @@ struct SessionCardExpanded: View {
         .background(SessionState.waitingForUser.stateColor.opacity(0.06))
     }
 
-    // MARK: - Response
-
-    func responseSection(_ response: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Divider().background(Color.white.opacity(0.06))
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Output")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.3))
-                Text(response)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.6))
-                    .lineLimit(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 6)
-            .background(Color.white.opacity(0.03))
-        }
-    }
-
     // MARK: - Stats Bar
 
     var statsBar: some View {
@@ -455,92 +289,6 @@ struct SessionCardExpanded: View {
                 .padding(.horizontal, 12).padding(.vertical, compact ? 2 : 4)
             }
         }
-    }
-
-    // MARK: - CLAUDE.md Viewer
-
-    func claudeMdViewer(content: String) -> some View {
-        Group {
-            Divider().background(Color.white.opacity(0.06))
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text(session.instructionsFileName)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.4))
-                    Spacer()
-                    Button("Edit") {
-                        claudeMdDraft = content
-                        editingClaudeMd = true
-                    }
-                    .font(.system(size: 10))
-                    .foregroundColor(brandOrange)
-                    .buttonStyle(.plain)
-                }
-                Text(content)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.6))
-                    .lineLimit(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(Color.white.opacity(0.03))
-        }
-    }
-
-    // MARK: - CLAUDE.md Editor
-
-    func claudeMdEditor() -> some View {
-        Group {
-            Divider().background(Color.white.opacity(0.06))
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("Editing \(session.instructionsFileName)")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(brandOrange)
-                    Spacer()
-                    Button("Cancel") { editingClaudeMd = false }
-                        .font(.system(size: 10)).foregroundColor(.secondary).buttonStyle(.plain)
-                    Button("Save") {
-                        saveClaudeMd(content: claudeMdDraft, projectPath: session.projectPath)
-                        session.claudeMdContent = claudeMdDraft
-                        editingClaudeMd = false
-                    }
-                    .font(.system(size: 10, weight: .semibold)).foregroundColor(brandOrange).buttonStyle(.plain)
-                }
-                TextEditor(text: $claudeMdDraft)
-                    .font(.system(size: 10, design: .monospaced))
-                    .frame(maxWidth: .infinity, minHeight: 80, maxHeight: 150)
-                    .scrollContentBackground(.hidden)
-                    .background(Color.black.opacity(0.2))
-                    .cornerRadius(4)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 8)
-        }
-    }
-
-    func saveClaudeMd(content: String, projectPath: String) {
-        let paths = [
-            projectPath + "/\(session.instructionsFileName)",
-            projectPath + "/.\(session.providerID.rawValue)/\(session.instructionsFileName)"
-        ]
-        let target = paths.first { FileManager.default.fileExists(atPath: $0) } ?? paths[0]
-        try? content.write(toFile: target, atomically: true, encoding: .utf8)
-    }
-
-    // MARK: - Approval Hints
-
-    var approvalHints: some View {
-        HStack(spacing: 16) {
-            HStack(spacing: 4) {
-                Text("⌘⇧Y").font(.system(size: 10, weight: .semibold, design: .monospaced)).foregroundColor(brandSuccess)
-                Text("Approve").font(.system(size: 10)).foregroundColor(.white.opacity(0.5))
-            }
-            HStack(spacing: 4) {
-                Text("⌘⇧N").font(.system(size: 10, weight: .semibold, design: .monospaced)).foregroundColor(.red)
-                Text("Reject").font(.system(size: 10)).foregroundColor(.white.opacity(0.5))
-            }
-        }
-        .padding(.horizontal, 12).padding(.vertical, 6)
     }
 
     // MARK: - Message Input
@@ -582,16 +330,6 @@ struct SessionCardExpanded: View {
         }
     }
 
-    // MARK: - Helpers
-
-    func permissionModeColor(_ mode: String) -> Color {
-        switch mode.lowercased() {
-        case "plan": return .blue
-        case "auto-accept", "autoaccept": return .green
-        case "auto": return .purple
-        default: return .white.opacity(0.5)
-        }
-    }
 }
 
 // MARK: - Empty State

@@ -12,7 +12,7 @@ VERSION="$(tr -d '\n' < "${ROOT_DIR}/VERSION")"
 # Override with SIGN_IDENTITY env var, or set to empty string for ad-hoc signing:
 #   SIGN_IDENTITY="" ./scripts/build_app.sh
 # Uses SHA-1 hash to avoid ambiguity when multiple certs exist.
-SIGN_IDENTITY="${SIGN_IDENTITY:-4D77EE9729D712C71A67E3E3657C9A17EC6F6122}"
+SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 
 cd "${ROOT_DIR}"
 
@@ -27,6 +27,7 @@ swift build -c "${BUILD_CONFIG}"
 
 echo "==> Creating app bundle"
 rm -rf "${APP_DIR}"
+xattr -cr "${DIST_DIR}" 2>/dev/null || true
 mkdir -p "${APP_DIR}/Contents/MacOS" "${APP_DIR}/Contents/Resources"
 
 cp ".build/${BUILD_CONFIG}/${APP_NAME}" "${APP_DIR}/Contents/MacOS/"
@@ -41,8 +42,8 @@ if [ -n "${RESOURCE_BUNDLE}" ]; then
     cp -R "${RESOURCE_BUNDLE}" "${APP_DIR}/Contents/Resources/"
 fi
 
-# Strip extended attributes (resource forks break codesign)
-xattr -cr "${APP_DIR}"
+# Strip all extended attributes (resource forks / FinderInfo break codesign)
+xattr -cr "${DIST_DIR}"
 
 # Entitlements for hardened runtime
 ENTITLEMENTS="${ROOT_DIR}/Sources/NotchBar/NotchBar.entitlements"
