@@ -42,10 +42,12 @@ struct CollapsedView: View {
                 }
 
                 if state.sessions.count > 1 {
-                    HStack(spacing: 3) {
+                    HStack(spacing: 2) {
                         ForEach(Array(state.sessions.enumerated()), id: \.1.id) { idx, s in
-                            Circle().fill(idx == state.activeSessionIndex ? .white : progressColor(s).opacity(0.5))
-                                .frame(width: 3.5, height: 3.5)
+                            let isActive = idx == state.activeSessionIndex
+                            RoundedRectangle(cornerRadius: 1.5)
+                                .fill(s.sessionState.stateColor.opacity(isActive ? 1.0 : 0.45))
+                                .frame(width: isActive ? 10 : 6, height: 3)
                         }
                     }.padding(.leading, 4)
                 }

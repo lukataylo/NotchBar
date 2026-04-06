@@ -128,6 +128,8 @@ func ringProgress(for session: ClaudeSession) -> Double {
 func ringColor(for session: ClaudeSession) -> Color {
     // Completed sessions always show green
     if session.isCompleted { return SessionState.completed.stateColor }
+    // Idle sessions always show gray
+    if session.sessionState == .idle { return SessionState.idle.stateColor }
 
     if AppSettings.shared.showContextWindow {
         return contextColor(for: session.contextUsage)
