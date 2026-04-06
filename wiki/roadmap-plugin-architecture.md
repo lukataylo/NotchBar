@@ -1,120 +1,57 @@
-# Roadmap: JSON-over-Socket Plugin Architecture
+# Roadmap: Plugin Architecture
 
-## Overview
+## Status: Core Implemented
 
-Transform NotchBar from a single-purpose agent dashboard into a **persistent ambient display** with a plugin system. Plugins are external processes that push JSON state to NotchBar via Unix sockets. NotchBar renders plugin output through a standard card layout with typed sections.
+The plugin system is live on the `plugin-architecture` branch. This document tracks what's built and what's next.
 
-## Design: JSON-over-Socket (Option A)
+## What's Built
 
-**Why this approach:**
-- Matches the existing socket IPC pattern (hook scripts already work this way)
-- Any language — Python, Node, Bash, a Claude skill script
-- Crash isolation — plugin crashes don't take down NotchBar
-- Hot reload — restart a plugin without restarting NotchBar
-- No Swift/Xcode required for plugin authors
+### Plugin System (Done)
+- Open `ProviderID` (string-based, extensible without modifying core code)
+- `PluginRegistry` with enable/disable per plugin, default-enabled control
+- `ProviderDescriptor` with capabilities, stability labels, accent colors
+- `AgentProviderController` protocol as the plugin interface
+- Plugin store UI with per-plugin settings and configure panels
+- `/create-plugin` Claude Code skill for guided plugin development
 
-## Plugin Directory Structure
+### Plugins (Done)
+- **Claude Code** (stable) — hook IPC, live approvals, transcript parsing, session history
+- **Codex** (beta) — process discovery, transcript monitoring, managed profile install
+- **Cursor** (beta) — workspace detection, process monitoring
+- **Build Monitor** (beta) — detects cargo, swift, npm, go, make builds
+- **Test Runner** (beta) — detects jest, pytest, cargo test, swift test, go test
 
-```
-~/.notchbar/plugins/
-├── conflict-monitor/
-│   ├── plugin.json          # manifest: name, type, card schema
-│   └── run.sh               # entry point (any language)
-├── ci-status/
-│   └── plugin.json
-└── pomodoro/
-    └── plugin.json
-```
+### Approval Doorbell (Done)
+- Full-panel overlay with file preview, edit diffs, command preview
+- Four approval levels: Deny, Allow Once, Allow All, Bypass
+- Approval queue for multiple pending approvals
+- Management tool category auto-approval
 
-## Manifest Format
+## What's Next
 
-```json
-{
-  "id": "conflict-monitor",
-  "name": "Conflict Monitor",
-  "version": "1.0",
-  "type": "card",
-  "socket": "~/.notchbar/plugins/conflict-monitor/plugin.sock",
-  "capabilities": ["card", "badge", "collapsed-status"],
-  "schema": {
-    "sections": ["header", "list", "actions"]
-  }
-}
-```
+### Near-Term Plugin Ideas
+| Plugin | Difficulty | Notes |
+|--------|-----------|-------|
+| Aider | Easy | Tail `.aider.chat.history.md`, process monitor pattern |
+| Windsurf/Cascade | Easy | Electron app, similar to Cursor plugin |
+| GitHub Copilot Chat | Medium | VS Code extension logs |
+| CI Status | Medium | Poll `gh run list --json`, augment existing sessions |
+| Deploy Tracker | Medium | Vercel/Railway/Fly API polling |
+| Docker Monitor | Easy | `docker ps --format json` polling |
 
-## Card Schema — Section Types
+### External Plugin Support (Future)
+The current plugin system requires plugins to be compiled into the app binary. A future extension would support external plugins via JSON-over-socket or stdin/stdout IPC:
 
-| Section Type | Renders As |
-|---|---|
-| `header` | Title + icon + status badge |
-| `list` | Rows with label, value, color, icon |
-| `key-value` | Compact key-value pairs |
-| `actions` | Buttons that send events back to the plugin |
-| `progress` | Progress bar/ring |
-| `alert` | Colored banner (like the context warning) |
-| `text` | Markdown-ish block |
+- Plugin as any executable (Python, Node, Bash)
+- Communication via stdin/stdout JSON-RPC
+- NotchBar manages plugin lifecycle (launch, restart, stop)
+- Plugin manifest in `~/.notchbar/plugins/<name>/plugin.json`
+- Hot reload without restarting NotchBar
 
-## Plugin Output Protocol
+This is the next major architectural step, but the current compiled-in approach covers the most common tools well.
 
-Plugin pushes JSON lines to its socket. NotchBar renders the latest state.
-
-```json
-{
-  "card": {
-    "header": { "title": "2 Conflicts", "icon": "exclamationmark.triangle.fill", "color": "orange" },
-    "sections": [
-      {
-        "type": "list",
-        "items": [
-          {
-            "icon": "doc.fill",
-            "label": "src/Models.swift",
-            "value": "backend + frontend sessions",
-            "color": "red",
-            "actions": [{ "id": "show-diff", "label": "Diff" }]
-          }
-        ]
-      },
-      {
-        "type": "actions",
-        "items": [
-          { "id": "pause-newer", "label": "Pause Newer Session", "style": "warning" },
-          { "id": "dismiss", "label": "Dismiss", "style": "secondary" }
-        ]
-      }
-    ]
-  },
-  "badge": { "count": 2, "color": "orange" },
-  "collapsed": "2 conflicts"
-}
-```
-
-## Internal Architecture Changes
-
-1. **PluginProtocol.swift** — protocol + manifest model + JSON card schema types
-2. **PluginManager.swift** — discovery, lifecycle, socket relay
-3. **PluginCardRenderer.swift** — generic SwiftUI view that renders card JSON
-4. **PluginSession adapter** — makes plugin cards appear in the existing card stack
-
-## First Plugin: Conflict Monitor
-
-Watches git state and agent activity across sessions to detect:
-- File-level conflicts — two sessions have pending changes to the same file
-- Branch conflicts — two sessions on branches touching overlapping files
-- Lock contention — one session writing to a file another is reading
-- Merge conflict detection — proactive check against main
-
-Resolution actions:
-- Pause a session (reject pending approvals + flag)
-- Show diff of what both sessions changed
-- Queue sessions (hold approvals on one until the other finishes)
-
-Implementation: ~200 lines of Swift or Python reading NotchBar socket events + git commands.
-
-## Other Plugin Ideas
-
-- **CI/CD status** — poll GitHub Actions, show build status per branch
-- **Pomodoro timer** — work/break timer in the notch
-- **System monitor** — CPU/memory/disk in the notch
-- **Slack/notifications** — surface messages from specific channels
-- **Deploy tracker** — show production deploy status
+### UI Improvements
+- Inline approval from collapsed bar (approve without expanding)
+- Richer file preview in doorbell (syntax highlighting)
+- Session grouping by project (multiple plugins monitoring the same repo)
+- Keyboard navigation within the approval overlay
