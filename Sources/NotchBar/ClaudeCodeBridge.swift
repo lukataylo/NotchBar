@@ -247,7 +247,9 @@ class ClaudeCodeBridge: AgentProviderController {
                 return session.autoApproveAll
             }()
 
-            if shouldAuto || sessionAutoApprove {
+            // Interactive tools (e.g. AskUserQuestion) always need user interaction
+            let category = ToolApprovalCategory.fromToolName(toolName)
+            if (shouldAuto || sessionAutoApprove) && category != .interactive {
                 respond("{\"decision\":\"approve\"}")
             } else {
                 DispatchQueue.main.async { [weak self] in
@@ -324,7 +326,8 @@ class ClaudeCodeBridge: AgentProviderController {
             let desc = event.toolDescription
             let toolName = event.toolName ?? "Tool"
             let settings = AppSettings.shared
-            let needsApproval = !settings.shouldAutoApprove(toolName: toolName) && !session.autoApproveAll
+            let category = ToolApprovalCategory.fromToolName(toolName)
+            let needsApproval = category == .interactive || (!settings.shouldAutoApprove(toolName: toolName) && !session.autoApproveAll)
 
             if needsApproval {
                 log.info("Tool '\(toolName)' requires approval (request: \(toolUseId))")
@@ -341,6 +344,31 @@ class ClaudeCodeBridge: AgentProviderController {
                     approval.fileContent = input["content"]?.stringValue
                     approval.editOldString = input["old_string"]?.stringValue
                     approval.editNewString = input["new_string"]?.stringValue
+
+                    // Parse AskUserQuestion questions
+                    if toolName == "AskUserQuestion",
+                       let questionsArr = input["questions"]?.arrayValue {
+                        approval.interactiveQuestions = questionsArr.compactMap { item in
+                            guard let obj = item.objectValue,
+                                  let q = obj["question"]?.stringValue else { return nil }
+                            let opts = (obj["options"]?.arrayValue ?? []).compactMap { opt -> InteractiveOption? in
+                                guard let o = opt.objectValue,
+                                      let label = o["label"]?.stringValue,
+                                      let desc = o["description"]?.stringValue else { return nil }
+                                return InteractiveOption(label: label, description: desc, preview: o["preview"]?.stringValue)
+                            }
+                            let multi: Bool = {
+                                if case .bool(let v) = obj["multiSelect"] { return v }
+                                return false
+                            }()
+                            return InteractiveQuestion(
+                                question: q,
+                                header: obj["header"]?.stringValue,
+                                options: opts,
+                                multiSelect: multi
+                            )
+                        }
+                    }
                 }
                 session.pendingApprovals.append(approval)
                 session.appendTask(TaskItem(title: desc, status: .pendingApproval, toolName: toolName, filePath: event.filePath))

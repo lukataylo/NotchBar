@@ -86,8 +86,9 @@ class ProviderManager {
         case .edit:       AppSettings.shared.autoApproveEdits = true
         case .command:    AppSettings.shared.autoApproveBash = true
         case .agent:      AppSettings.shared.autoApproveAgents = true
-        case .management: AppSettings.shared.autoApproveManagement = true
-        case .unknown:    session.autoApproveAll = true
+        case .management:   AppSettings.shared.autoApproveManagement = true
+        case .interactive:  break  // Never auto-approve interactive tools
+        case .unknown:      session.autoApproveAll = true
         }
         approve(requestId: requestId, session: session)
     }

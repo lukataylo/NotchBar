@@ -43,7 +43,39 @@ struct ClaudeCodeEvent: Codable {
         case "Glob": return "Search: \(input["pattern"]?.stringValue ?? "")"
         case "Grep": return "Grep: \(input["pattern"]?.stringValue ?? "")"
         case "Agent": return "Agent: \(input["description"]?.stringValue ?? "subagent")"
-        default: return toolName ?? "Tool"
+        case "AskUserQuestion":
+            if let questions = input["questions"]?.arrayValue,
+               let first = questions.first?.objectValue,
+               let q = first["question"]?.stringValue {
+                return q
+            }
+            return "Ask user a question"
+        case "NotebookEdit": return "Edit cell \(input["cell_id"]?.stringValue ?? "") in \(shortPath(input["notebook_path"]?.stringValue))"
+        case "WebFetch": return "Fetch: \(input["url"]?.stringValue ?? "")"
+        case "WebSearch": return "Search: \(input["query"]?.stringValue ?? "")"
+        case "Skill": return "Skill: \(input["skill"]?.stringValue ?? "")"
+        case "TaskCreate": return input["description"]?.stringValue ?? "Create task"
+        case "TaskUpdate": return "Update task: \(input["id"]?.stringValue ?? "")"
+        case "TaskGet", "TaskList", "TaskStop", "TaskOutput":
+            return "\(toolName ?? "Task"): \(input["id"]?.stringValue ?? input["description"]?.stringValue ?? "")"
+        case "ToolSearch": return "Search tools: \(input["query"]?.stringValue ?? "")"
+        case "LSP": return "LSP: \(input["operation"]?.stringValue ?? input["command"]?.stringValue ?? "")"
+        case "CronCreate": return "Schedule: \(input["description"]?.stringValue ?? input["schedule"]?.stringValue ?? "")"
+        case "CronDelete": return "Remove schedule: \(input["id"]?.stringValue ?? "")"
+        case "CronList": return "List schedules"
+        case "Monitor": return "Monitor: \(input["description"]?.stringValue ?? "")"
+        case "ScheduleWakeup": return "Wake in \(input["delaySeconds"]?.stringValue ?? "?")s"
+        case "EnterPlanMode", "ExitPlanMode": return toolName ?? "Plan"
+        default:
+            if let name = toolName, name.hasPrefix("mcp__") {
+                let parts = name.split(separator: "__")
+                let shortName = parts.count >= 3 ? String(parts.last!) : name
+                let desc = input["description"]?.stringValue
+                    ?? input["query"]?.stringValue
+                    ?? input["command"]?.stringValue
+                return desc.map { "\(shortName): \($0)" } ?? shortName
+            }
+            return toolName ?? "Tool"
         }
     }
 
@@ -62,13 +94,18 @@ struct ClaudeCodeEvent: Codable {
 // MARK: - AnyCodableValue
 
 enum AnyCodableValue: Codable {
-    case string(String), int(Int), double(Double), bool(Bool), null
+    case string(String), int(Int), double(Double), bool(Bool)
+    case array([AnyCodableValue]), object([String: AnyCodableValue])
+    case null
+
     init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()
         if let v = try? c.decode(String.self) { self = .string(v) }
         else if let v = try? c.decode(Int.self) { self = .int(v) }
         else if let v = try? c.decode(Double.self) { self = .double(v) }
         else if let v = try? c.decode(Bool.self) { self = .bool(v) }
+        else if let v = try? c.decode([AnyCodableValue].self) { self = .array(v) }
+        else if let v = try? c.decode([String: AnyCodableValue].self) { self = .object(v) }
         else { self = .null }
     }
     func encode(to encoder: Encoder) throws {
@@ -78,10 +115,14 @@ enum AnyCodableValue: Codable {
         case .int(let v): try c.encode(v)
         case .double(let v): try c.encode(v)
         case .bool(let v): try c.encode(v)
+        case .array(let v): try c.encode(v)
+        case .object(let v): try c.encode(v)
         case .null: try c.encodeNil()
         }
     }
     var stringValue: String? { if case .string(let v) = self { return v }; return nil }
+    var arrayValue: [AnyCodableValue]? { if case .array(let v) = self { return v }; return nil }
+    var objectValue: [String: AnyCodableValue]? { if case .object(let v) = self { return v }; return nil }
 }
 
 // MARK: - Hook Script Management

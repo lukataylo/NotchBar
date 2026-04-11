@@ -14,6 +14,11 @@ struct ApprovalOverlay: View {
     let onAllowOnce: () -> Void
     let onAllowAll: () -> Void
     let onBypass: () -> Void
+    var onOpenTerminal: (() -> Void)?
+
+    private var isInteractive: Bool {
+        ToolApprovalCategory.fromToolName(approval.toolName) == .interactive
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -108,6 +113,7 @@ struct ApprovalOverlay: View {
     }
 
     private var toolIcon: String {
+        if isInteractive { return "bubble.left.and.bubble.right.fill" }
         switch approval.toolName {
         case "Edit", "Write", "NotebookEdit": return "exclamationmark.triangle.fill"
         case "Bash": return "exclamationmark.triangle.fill"
@@ -118,6 +124,7 @@ struct ApprovalOverlay: View {
     }
 
     private var toolColor: Color {
+        if isInteractive { return .cyan }
         switch approval.toolName {
         case "Bash": return .red
         case "Edit", "Write", "NotebookEdit": return .orange
@@ -130,7 +137,10 @@ struct ApprovalOverlay: View {
 
     @ViewBuilder
     private var contentPreview: some View {
-        if let content = approval.fileContent {
+        if let questions = approval.interactiveQuestions, !questions.isEmpty {
+            // Interactive tool: show questions and options
+            interactivePreview(questions: questions)
+        } else if let content = approval.fileContent {
             // Write: show the file content being written
             filePreviewBox(
                 filename: shortFilename(approval.filePath),
@@ -307,85 +317,267 @@ struct ApprovalOverlay: View {
         )
     }
 
+    // MARK: - Interactive Preview
+
+    @State private var expandedPreviewIndex: Int?
+
+    private func interactivePreview(questions: [InteractiveQuestion]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header bar
+            HStack(spacing: 6) {
+                Text(questions.count > 1 ? "\(questions.count) Questions" : "Question")
+                    .font(.matrixMono(11, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.7))
+                Text("respond in terminal")
+                    .font(.matrix(9, weight: .bold))
+                    .foregroundColor(.cyan)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Color.cyan.opacity(0.2))
+                    .cornerRadius(3)
+                Spacer()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.white.opacity(0.04))
+
+            Divider().background(Color.white.opacity(0.06))
+
+            // Questions list
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(questions.enumerated()), id: \.0) { qIdx, q in
+                        VStack(alignment: .leading, spacing: 6) {
+                            // Question header chip + select mode
+                            HStack(spacing: 6) {
+                                if let header = q.header {
+                                    Text(header)
+                                        .font(.matrix(9, weight: .bold))
+                                        .foregroundColor(.cyan)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 2)
+                                        .background(Color.cyan.opacity(0.15))
+                                        .cornerRadius(3)
+                                }
+                                if q.multiSelect {
+                                    Text("multi-select")
+                                        .font(.matrix(8, weight: .medium))
+                                        .foregroundColor(.white.opacity(0.3))
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 1)
+                                        .background(Color.white.opacity(0.06))
+                                        .cornerRadius(2)
+                                }
+                                Spacer()
+                            }
+
+                            // Question text
+                            Text(q.question)
+                                .font(.matrixMono(11))
+                                .foregroundColor(.white.opacity(0.85))
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            // Options
+                            ForEach(Array(q.options.enumerated()), id: \.0) { optIdx, opt in
+                                let globalIdx = qIdx * 100 + optIdx
+                                VStack(alignment: .leading, spacing: 0) {
+                                    HStack(alignment: .top, spacing: 6) {
+                                        Text(q.multiSelect ? "☐" : "○")
+                                            .font(.matrixMono(10))
+                                            .foregroundColor(.cyan.opacity(0.6))
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(opt.label)
+                                                .font(.matrixMono(10, weight: .semibold))
+                                                .foregroundColor(.white.opacity(0.7))
+                                            if !opt.description.isEmpty {
+                                                Text(opt.description)
+                                                    .font(.matrixMono(9))
+                                                    .foregroundColor(.white.opacity(0.4))
+                                                    .fixedSize(horizontal: false, vertical: true)
+                                            }
+                                        }
+                                        Spacer(minLength: 0)
+                                        // Preview toggle
+                                        if opt.preview != nil {
+                                            Button {
+                                                withAnimation(.easeInOut(duration: 0.15)) {
+                                                    expandedPreviewIndex = expandedPreviewIndex == globalIdx ? nil : globalIdx
+                                                }
+                                            } label: {
+                                                Image(systemName: expandedPreviewIndex == globalIdx ? "eye.slash" : "eye")
+                                                    .font(.matrix(9))
+                                                    .foregroundColor(.cyan.opacity(0.5))
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                    }
+
+                                    // Expanded preview
+                                    if let preview = opt.preview, expandedPreviewIndex == globalIdx {
+                                        Text(preview)
+                                            .font(.matrixMono(9))
+                                            .foregroundColor(.white.opacity(0.6))
+                                            .padding(6)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .background(Color.black.opacity(0.4))
+                                            .cornerRadius(4)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 4)
+                                                    .stroke(Color.cyan.opacity(0.15), lineWidth: 0.5)
+                                            )
+                                            .padding(.leading, 16)
+                                            .padding(.top, 3)
+                                            .transition(.opacity)
+                                    }
+                                }
+                            }
+
+                            // Implicit "Other" option
+                            HStack(spacing: 6) {
+                                Text(q.multiSelect ? "☐" : "○")
+                                    .font(.matrixMono(10))
+                                    .foregroundColor(.white.opacity(0.25))
+                                Text("Other (custom input)")
+                                    .font(.matrixMono(9))
+                                    .foregroundColor(.white.opacity(0.25))
+                                    .italic()
+                            }
+                        }
+
+                        // Separator between questions
+                        if qIdx < questions.count - 1 {
+                            Divider()
+                                .background(Color.white.opacity(0.08))
+                                .padding(.vertical, 2)
+                        }
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+            }
+            .frame(maxHeight: 220)
+        }
+        .background(Color.black.opacity(0.3))
+        .cornerRadius(6)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
+        )
+    }
+
     // MARK: - Action Buttons
 
     @State private var showAdvanced = false
 
     private var actionButtons: some View {
         VStack(spacing: 6) {
-            // Primary actions: Deny + Allow
-            HStack(spacing: 8) {
-                Button(action: onDeny) {
-                    Text("Deny")
-                        .font(.matrix(11, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.7))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 7)
-                        .background(Color.white.opacity(0.1))
-                        .cornerRadius(6)
-                }
-                .buttonStyle(.plain)
+            if isInteractive {
+                // Interactive tools: Deny + Open in Terminal
+                HStack(spacing: 8) {
+                    Button(action: onDeny) {
+                        Text("Deny")
+                            .font(.matrix(11, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.7))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 7)
+                            .background(Color.white.opacity(0.1))
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
 
-                Button(action: onAllowOnce) {
-                    Text("Allow")
-                        .font(.matrix(11, weight: .semibold))
+                    Button {
+                        onAllowOnce()
+                        onOpenTerminal?()
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "terminal.fill")
+                                .font(.matrix(10))
+                            Text("Open in Terminal")
+                                .font(.matrix(11, weight: .semibold))
+                        }
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 7)
-                        .background(brandOrange)
+                        .background(Color.cyan.opacity(0.7))
                         .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                }
+            } else {
+                // Standard tools: Deny + Allow
+                HStack(spacing: 8) {
+                    Button(action: onDeny) {
+                        Text("Deny")
+                            .font(.matrix(11, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.7))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 7)
+                            .background(Color.white.opacity(0.1))
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: onAllowOnce) {
+                        Text("Allow")
+                            .font(.matrix(11, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 7)
+                            .background(brandOrange)
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                // Disclosure chevron for advanced options
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) { showAdvanced.toggle() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Group {
+                            if showAdvanced {
+                                MatrixChevronUp()
+                                    .stroke(.white.opacity(0.3), lineWidth: 1.5)
+                            } else {
+                                MatrixChevronDown()
+                                    .stroke(.white.opacity(0.3), lineWidth: 1.5)
+                            }
+                        }
+                        .frame(width: 8, height: 8)
+                        Text("More options")
+                            .font(.matrix(10))
+                            .foregroundColor(.white.opacity(0.3))
+                    }
                 }
                 .buttonStyle(.plain)
-            }
 
-            // Disclosure chevron for advanced options
-            Button {
-                withAnimation(.easeInOut(duration: 0.15)) { showAdvanced.toggle() }
-            } label: {
-                HStack(spacing: 4) {
-                    Group {
-                        if showAdvanced {
-                            MatrixChevronUp()
-                                .stroke(.white.opacity(0.3), lineWidth: 1.5)
-                        } else {
-                            MatrixChevronDown()
-                                .stroke(.white.opacity(0.3), lineWidth: 1.5)
+                // Advanced options (revealed)
+                if showAdvanced {
+                    HStack(spacing: 8) {
+                        Button(action: onAllowAll) {
+                            Text("Allow All \(approval.toolName)")
+                                .font(.matrix(10, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.6))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                                .background(Color.white.opacity(0.08))
+                                .cornerRadius(5)
                         }
-                    }
-                    .frame(width: 8, height: 8)
-                    Text("More options")
-                        .font(.matrix(10))
-                        .foregroundColor(.white.opacity(0.3))
-                }
-            }
-            .buttonStyle(.plain)
+                        .buttonStyle(.plain)
 
-            // Advanced options (revealed)
-            if showAdvanced {
-                HStack(spacing: 8) {
-                    Button(action: onAllowAll) {
-                        Text("Allow All \(approval.toolName)")
-                            .font(.matrix(10, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.6))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 6)
-                            .background(Color.white.opacity(0.08))
-                            .cornerRadius(5)
+                        Button(action: onBypass) {
+                            Text("Auto-approve Session")
+                                .font(.matrix(10, weight: .semibold))
+                                .foregroundColor(.red.opacity(0.7))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                                .background(Color.red.opacity(0.08))
+                                .cornerRadius(5)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-
-                    Button(action: onBypass) {
-                        Text("Auto-approve Session")
-                            .font(.matrix(10, weight: .semibold))
-                            .foregroundColor(.red.opacity(0.7))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 6)
-                            .background(Color.red.opacity(0.08))
-                            .cornerRadius(5)
-                    }
-                    .buttonStyle(.plain)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
     }

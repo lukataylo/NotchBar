@@ -42,7 +42,7 @@ class AppSettings: ObservableObject {
     @AppStorage("autoApproveEdits") var autoApproveEdits: Bool = false
     @AppStorage("autoApproveBash") var autoApproveBash: Bool = false
     @AppStorage("autoApproveAgents") var autoApproveAgents: Bool = false
-    @AppStorage("autoApproveManagement") var autoApproveManagement: Bool = false
+    @AppStorage("autoApproveManagement") var autoApproveManagement: Bool = true
     @AppStorage("approvalTimeoutMinutes") var approvalTimeoutMinutes: Int = 5  // 0 = never
 
     func playSound(_ name: String) {
@@ -67,8 +67,9 @@ class AppSettings: ObservableObject {
         case .edit:       return autoApproveEdits
         case .command:    return autoApproveBash
         case .agent:      return autoApproveAgents
-        case .management: return autoApproveManagement
-        case .unknown:    return false
+        case .management:   return autoApproveManagement
+        case .interactive:  return false  // Always requires user interaction
+        case .unknown:      return false
         }
     }
 

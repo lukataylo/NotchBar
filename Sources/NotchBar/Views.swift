@@ -113,6 +113,9 @@ struct ExpandedViewV2: View {
                     onBypass: {
                         ProviderManager.shared?.bypass(requestId: approval.requestId, session: session)
                         collapseIfNoMoreApprovals()
+                    },
+                    onOpenTerminal: {
+                        TerminalHelper.focusTerminal()
                     }
                 )
             } else if state.sessions.isEmpty {

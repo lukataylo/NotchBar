@@ -81,6 +81,41 @@ enum TerminalHelper {
         }
     }
 
+    /// Focus the terminal app running a claude process (without sending input).
+    static func focusTerminal() {
+        // Try Terminal.app
+        let termScript = """
+        tell application "Terminal"
+            activate
+        end tell
+        """
+        var error: NSDictionary?
+        NSAppleScript(source: termScript)?.executeAndReturnError(&error)
+        if error == nil { return }
+
+        // Try iTerm2
+        let iTermScript = """
+        tell application "iTerm2"
+            activate
+        end tell
+        """
+        var iTermError: NSDictionary?
+        NSAppleScript(source: iTermScript)?.executeAndReturnError(&iTermError)
+        if iTermError == nil { return }
+
+        // Try Warp
+        let warpScript = """
+        tell application "Warp"
+            activate
+        end tell
+        """
+        var warpError: NSDictionary?
+        NSAppleScript(source: warpScript)?.executeAndReturnError(&warpError)
+        if warpError != nil {
+            termLog.warning("Could not focus any terminal app")
+        }
+    }
+
     /// Open a new terminal tab and run a command.
     /// Tries Terminal.app first, falls back to iTerm2.
     static func runCommand(_ command: String) {

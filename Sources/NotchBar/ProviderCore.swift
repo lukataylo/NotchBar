@@ -71,7 +71,7 @@ struct ProviderDescriptor {
 // MARK: - Tool Approval
 
 enum ToolApprovalCategory {
-    case read, edit, command, agent, management, unknown
+    case read, edit, command, agent, management, interactive, unknown
 
     static func fromToolName(_ toolName: String) -> ToolApprovalCategory {
         switch toolName {
@@ -79,10 +79,15 @@ enum ToolApprovalCategory {
         case "Edit", "Write", "NotebookEdit": return .edit
         case "Bash": return .command
         case "Agent": return .agent
+        case "AskUserQuestion": return .interactive
         case "TaskCreate", "TaskUpdate", "TaskGet", "TaskList",
              "TaskStop", "TaskOutput", "TodoWrite", "TodoRead",
              "Skill", "ToolSearch", "LSP",
-             "WebSearch", "WebFetch": return .management
+             "WebSearch", "WebFetch",
+             "CronCreate", "CronDelete", "CronList",
+             "ScheduleWakeup", "Monitor", "RemoteTrigger",
+             "EnterWorktree", "ExitWorktree",
+             "EnterPlanMode", "ExitPlanMode": return .management
         default: return .unknown
         }
     }

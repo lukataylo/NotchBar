@@ -123,6 +123,22 @@ struct PendingApproval: Identifiable {
     var fileContent: String?     // For Write: the content being written
     var editOldString: String?   // For Edit: the string being replaced
     var editNewString: String?   // For Edit: the replacement string
+
+    // Interactive tool data (AskUserQuestion)
+    var interactiveQuestions: [InteractiveQuestion]?
+}
+
+struct InteractiveQuestion {
+    let question: String
+    let header: String?
+    let options: [InteractiveOption]
+    let multiSelect: Bool
+}
+
+struct InteractiveOption {
+    let label: String
+    let description: String
+    let preview: String?
 }
 
 enum SessionState: Int, Comparable {
