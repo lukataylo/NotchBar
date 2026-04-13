@@ -114,7 +114,18 @@ class SocketServer {
                 ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { accept(listenFD, $0, &clientLen) }
             }
             guard clientFD >= 0 else {
-                if running { log.error("Accept failed: \(String(cString: strerror(errno)))") }
+                if running {
+                    let err = errno
+                    log.error("Accept failed: \(String(cString: strerror(err)))")
+                    // Back off briefly on resource-exhaustion errors so we don't
+                    // spin at 100% CPU (e.g. EMFILE, ENFILE, ENOMEM).
+                    if err == EMFILE || err == ENFILE || err == ENOMEM {
+                        Thread.sleep(forTimeInterval: 0.1)
+                    } else if err == EBADF || err == EINVAL {
+                        // Listen socket closed — bail out rather than infinite-looping.
+                        return
+                    }
+                }
                 continue
             }
 
@@ -125,22 +136,58 @@ class SocketServer {
         }
     }
 
+    /// Write a string to a socket, handling partial writes and EINTR.
+    /// Returns true if all bytes were written, false otherwise.
+    @discardableResult
+    private func writeAll(fd: Int32, string: String) -> Bool {
+        let bytes = Array(string.utf8)
+        guard !bytes.isEmpty else { return true }
+        var total = 0
+        return bytes.withUnsafeBufferPointer { buf -> Bool in
+            guard let base = buf.baseAddress else { return false }
+            while total < bytes.count {
+                let n = write(fd, base.advanced(by: total), bytes.count - total)
+                if n < 0 {
+                    if errno == EINTR { continue }
+                    log.error("Socket write failed: \(String(cString: strerror(errno)))")
+                    return false
+                }
+                if n == 0 { return false }
+                total += n
+            }
+            return true
+        }
+    }
+
     private func handleConnection(fd: Int32) {
         defer { close(fd) }
 
         // Set read timeout (10 seconds) to avoid hanging on bad clients
         var tv = timeval(tv_sec: 10, tv_usec: 0)
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        // Also bound writes so a dead client can't hang the response path
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
 
         // Read all data until EOF or newline
         var buffer = Data()
         let chunk = UnsafeMutablePointer<UInt8>.allocate(capacity: 65536)
         defer { chunk.deallocate() }
 
+        // Cap incoming payload so a malicious/broken client can't exhaust memory
+        let maxPayload = 4 * 1024 * 1024
         while true {
             let n = read(fd, chunk, 65536)
-            if n <= 0 { break }
+            if n < 0 {
+                if errno == EINTR { continue }
+                break
+            }
+            if n == 0 { break }
             buffer.append(chunk, count: n)
+            if buffer.count > maxPayload {
+                log.error("Socket payload exceeds \(maxPayload) bytes — closing")
+                writeAll(fd: fd, string: "{\"error\":\"payload too large\"}\n")
+                return
+            }
             // Check for newline delimiter — hook sends one JSON object per line
             if buffer.contains(0x0A) { break }
         }
@@ -150,10 +197,7 @@ class SocketServer {
         // Parse the JSON
         guard let event = try? JSONDecoder().decode(ClaudeCodeEvent.self, from: buffer) else {
             log.error("Failed to decode event from socket — rejecting malformed request")
-            let response = "{\"error\":\"malformed request\"}\n"
-            _ = response.utf8CString.withUnsafeBufferPointer { ptr in
-                write(fd, ptr.baseAddress, response.utf8.count)
-            }
+            writeAll(fd: fd, string: "{\"error\":\"malformed request\"}\n")
             return
         }
 
@@ -162,8 +206,7 @@ class SocketServer {
         // For post-tool-use, process the event and send a short ack so the client closes cleanly
         if hookType != "pre-tool-use" && hookType != "pretooluse" {
             onEvent?(event, hookType, { _ in })
-            let ack = "{\"ok\":true}\n"
-            _ = ack.withCString { ptr in write(fd, ptr, ack.utf8.count) }
+            writeAll(fd: fd, string: "{\"ok\":true}\n")
             return
         }
 
@@ -183,22 +226,21 @@ class SocketServer {
         }
 
         let timeoutMinutes = AppSettings.shared.approvalTimeoutMinutes
-        if timeoutMinutes <= 0 {
-            semaphore.wait()
-        } else {
-            let timeout = DispatchTime.now() + .seconds(timeoutMinutes * 60)
-            if semaphore.wait(timeout: timeout) == .timedOut {
-                lock.lock()
-                if !responded {
-                    responded = true
-                    responseJSON = "{\"decision\":\"approve\"}"
-                    lock.unlock()
-                    log.warning("Approval timed out after \(timeoutMinutes)min, auto-approving")
-                    onTimeout?(event)
-                } else {
-                    lock.unlock()
-                    // Callback beat us — responseJSON already set
-                }
+        // Hard upper bound so a stuck handler can never block the socket thread forever,
+        // even if the user set timeoutMinutes = 0 ("wait indefinitely").
+        let effectiveMinutes = timeoutMinutes > 0 ? timeoutMinutes : 60
+        let timeout = DispatchTime.now() + .seconds(effectiveMinutes * 60)
+        if semaphore.wait(timeout: timeout) == .timedOut {
+            lock.lock()
+            if !responded {
+                responded = true
+                responseJSON = "{\"decision\":\"approve\"}"
+                lock.unlock()
+                log.warning("Approval timed out after \(effectiveMinutes)min, auto-approving")
+                onTimeout?(event)
+            } else {
+                lock.unlock()
+                // Callback beat us — responseJSON already set
             }
         }
 
@@ -206,9 +248,7 @@ class SocketServer {
         lock.lock()
         let line = responseJSON + "\n"
         lock.unlock()
-        _ = line.withCString { ptr in
-            write(fd, ptr, line.utf8.count)
-        }
+        writeAll(fd: fd, string: line)
     }
 
     func stop() {

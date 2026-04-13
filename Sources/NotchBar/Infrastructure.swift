@@ -53,16 +53,20 @@ class MultiScreenManager {
     var controllers: [CGDirectDisplayID: NotchPanelController] = [:]
     let state: NotchState
     var clickMonitor: Any?
+    private var screenObserver: NSObjectProtocol?
 
     init(state: NotchState) { self.state = state }
 
     deinit {
         if let monitor = clickMonitor { NSEvent.removeMonitor(monitor) }
+        if let observer = screenObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     func setup() {
         refreshScreens()
-        NotificationCenter.default.addObserver(
+        screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil, queue: .main
         ) { [weak self] _ in self?.refreshScreens() }

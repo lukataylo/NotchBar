@@ -151,7 +151,9 @@ class PTYSessionManager {
         let pid = sessionPIDs[sessionId]
         lock.unlock()
 
-        if let pid = pid {
+        // Guard pid > 0: kill(0, sig) = signal to our own process group,
+        // kill(-1, sig) = signal to everyone we can reach. Either would be a disaster.
+        if let pid = pid, pid > 0 {
             if kill(pid, SIGTERM) == 0 {
                 log.info("Sent SIGTERM to PID \(pid) for session \(sessionId)")
             } else if errno != ESRCH {
@@ -177,7 +179,7 @@ class PTYSessionManager {
         lock.lock()
         let pid = sessionPIDs[sessionId]
         lock.unlock()
-        guard let pid = pid else { return false }
+        guard let pid = pid, pid > 0 else { return false }
         return kill(pid, 0) == 0
     }
 }

@@ -20,7 +20,15 @@ struct ShellResult {
 enum Shell {
     /// Run an executable with arguments and return a typed ShellResult.
     /// Returns nil only if the process fails to launch at all.
+    ///
+    /// Both stdout and stderr are read concurrently to avoid pipe-buffer
+    /// deadlocks: if a child writes more than the pipe buffer size (~64KB) to
+    /// one stream while we're blocked reading the other, the child would stall
+    /// waiting for buffer space, and we'd hang forever.
     static func execute(_ executable: String, _ args: [String], cwd: String? = nil) -> ShellResult? {
+        // Validate executable exists before trying to launch (avoids noisy ObjC exceptions)
+        guard FileManager.default.isExecutableFile(atPath: executable) else { return nil }
+
         let outPipe = Pipe()
         let errPipe = Pipe()
         let process = Process()
@@ -29,10 +37,35 @@ enum Shell {
         if let cwd { process.currentDirectoryURL = URL(fileURLWithPath: cwd) }
         process.standardOutput = outPipe
         process.standardError = errPipe
-        guard (try? process.run()) != nil else { return nil }
-        let outData = outPipe.fileHandleForReading.readDataToEndOfFile()
-        let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+
+        // Read both pipes concurrently to prevent deadlock on large output streams.
+        var outData = Data()
+        var errData = Data()
+        let group = DispatchGroup()
+        let readQueue = DispatchQueue(label: "com.notchbar.shell.read", attributes: .concurrent)
+
+        group.enter()
+        readQueue.async {
+            outData = outPipe.fileHandleForReading.readDataToEndOfFile()
+            group.leave()
+        }
+        group.enter()
+        readQueue.async {
+            errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+            group.leave()
+        }
+
         process.waitUntilExit()
+        // Wait for pipe readers to finish draining (they exit once the child
+        // closes its fds, which happens on exit).
+        group.wait()
+
         return ShellResult(
             exitCode: process.terminationStatus,
             stdout: String(data: outData, encoding: .utf8) ?? "",
@@ -111,10 +144,22 @@ enum Shell {
     /// Returns the decoded text and the new file offset, or nil on failure.
     static func readTail(path: String, from offset: UInt64) -> (text: String, newOffset: UInt64)? {
         guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
-        defer { handle.closeFile() }
-        handle.seek(toFileOffset: offset)
-        let data = handle.readDataToEndOfFile()
+        defer { try? handle.close() }
+        do {
+            try handle.seek(toOffset: offset)
+        } catch {
+            return nil
+        }
+        let data: Data
+        do {
+            data = try handle.readToEnd() ?? Data()
+        } catch {
+            return nil
+        }
         guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return nil }
-        return (text, handle.offsetInFile)
+        // offset + data.count avoids another syscall and never disagrees with
+        // the number of bytes we just consumed (unlike offsetInFile, which can
+        // be affected by concurrent truncation).
+        return (text, offset + UInt64(data.count))
     }
 }

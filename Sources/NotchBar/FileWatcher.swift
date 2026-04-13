@@ -15,7 +15,10 @@ class FileWatcher {
     /// Recently written files (by tool-use events from known agents).
     /// When we see a modification on a locked file, we skip it if
     /// the lock owner just wrote to it (within this window).
+    /// Guarded by `writesLock` — mutated from main (recordAgentWrite) and
+    /// background (checkLockedFiles).
     private var recentToolWrites: [String: Date] = [:]
+    private let writesLock = NSLock()
     private let recentWriteWindow: TimeInterval = 5.0
 
     init(coordination: CoordinationEngine) {
@@ -39,15 +42,22 @@ class FileWatcher {
     /// Record that a known agent just wrote to a file (suppresses false-positive conflicts).
     func recordAgentWrite(_ filePath: String) {
         let normalized = (filePath as NSString).standardizingPath
+        writesLock.lock()
         recentToolWrites[normalized] = Date()
+        writesLock.unlock()
     }
 
     private func checkLockedFiles() {
-        let locks = coordination.activeLocks
+        // Thread-safe snapshot — activeLocks is mutated on the main thread
+        // under a lock, and we read it from a background queue.
+        let locks = coordination.snapshotLocks()
 
-        // Clean up stale recent-write entries
+        // Snapshot the recent-writes map under the lock, and prune stale entries.
         let now = Date()
+        writesLock.lock()
         recentToolWrites = recentToolWrites.filter { now.timeIntervalSince($0.value) < recentWriteWindow }
+        let recentWritesSnapshot = recentToolWrites
+        writesLock.unlock()
 
         for (path, fileLock) in locks {
             guard !fileLock.isStale else { continue }
@@ -67,7 +77,7 @@ class FileWatcher {
             // File was modified since last check
             if modDate > last {
                 // Skip if the lock owner's agent just wrote to it
-                if let recentWrite = recentToolWrites[path], now.timeIntervalSince(recentWrite) < recentWriteWindow {
+                if let recentWrite = recentWritesSnapshot[path], now.timeIntervalSince(recentWrite) < recentWriteWindow {
                     continue
                 }
 

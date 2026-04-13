@@ -279,4 +279,11 @@ class CoordinationEngine: ObservableObject {
         defer { lock.unlock() }
         return activeLocks[normalizePath(filePath)]
     }
+
+    /// Thread-safe snapshot of the current locks. Safe to call from any thread.
+    func snapshotLocks() -> [String: FileLock] {
+        lock.lock()
+        defer { lock.unlock() }
+        return activeLocks
+    }
 }

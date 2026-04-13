@@ -386,6 +386,9 @@ class ClaudeCodeBridge: AgentProviderController {
 
                 let timeoutMinutes = settings.approvalTimeoutMinutes
                 if timeoutMinutes > 0 {
+                    // Invalidate any pre-existing timer for this request id so we
+                    // don't leak Timer instances on duplicate/retried events.
+                    approvalTimers[toolUseId]?.invalidate()
                     let timer = Timer.scheduledTimer(withTimeInterval: TimeInterval(timeoutMinutes * 60), repeats: false) { [weak self] _ in
                         self?.approveAction(requestId: toolUseId, sessionId: session.id)
                     }
